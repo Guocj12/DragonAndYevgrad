@@ -25,7 +25,7 @@ export const TUNING = {
   tickSeconds: 0.05,
   mpPerCollapse: 1,
   mpPurifyFactor: 8,
-  ppPerGuard: 24,
+  ppPerGuard: 12,
   apLayerBase: 1,
   // 自动采购：前 8 级解锁升级 1–8，之后每级间隔 ×0.95，最快 0.05 秒（每秒 20 次）
   autoBuyBaseInterval: 1.0,
@@ -276,13 +276,13 @@ export const GENERIC_TREE = [
     cost: (l) => costOf(4, 2, l),
     desc: (l) => CENTER_STEPS[l] || '六级已满：全自动化。' },
 
-  { id: 'g8', name: '奶茶翻倍', layer: 1, slot: 'trunk', angle: 45, parent: 'g7', repeat: true, cost: (l) => costOf(5, 10, l),
+  { id: 'g8', name: '奶茶翻倍', layer: 1, slot: 'trunk', angle: 45, parent: 'g7', repeat: true, cost: (l) => costOf(5, 4.9, l),
     desc: (l) => `每级全体产量 ×2（当前 ${Math.pow(2, l)} 倍）。` },
-  { id: 'g10', name: 'MP 翻倍', layer: 1, slot: 'trunk', angle: -45, parent: 'g7', repeat: true, cost: (l) => costOf(10, 10, l),
+  { id: 'g10', name: 'MP 翻倍', layer: 1, slot: 'trunk', angle: -45, parent: 'g7', repeat: true, cost: (l) => costOf(10, 4.9, l),
     desc: (l) => `每级 MP 获取 ×5（当前 ${Math.pow(5, l)} 倍）。` },
-  { id: 'g11', name: 'PP 翻倍', layer: 1, slot: 'trunk', angle: -135, parent: 'g7', repeat: true, cost: (l) => costOf(10, 10, l),
+  { id: 'g11', name: 'PP 翻倍', layer: 1, slot: 'trunk', angle: -135, parent: 'g7', repeat: true, cost: (l) => costOf(10, 4.9, l),
     desc: (l) => `每级 PP 获取 ×5（当前 ${Math.pow(5, l)} 倍）。` },
-  { id: 'g9', name: '净化翻倍', layer: 1, slot: 'trunk', angle: 135, parent: 'g7', repeat: true, cost: (l) => costOf(50, 100, l),
+  { id: 'g9', name: '净化翻倍', layer: 1, slot: 'trunk', angle: 135, parent: 'g7', repeat: true, cost: (l) => costOf(50, 18, l),
     desc: (l) => `每级净化效率 ×10（当前 ${Math.pow(10, l)} 倍）。` },
 
   { id: 'g1', name: '产量共鸣', layer: 2, slot: 'leaf', angle: 90, parent: 'g8', repeat: false, cost: () => d(6),

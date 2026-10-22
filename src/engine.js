@@ -219,7 +219,7 @@ export class Engine {
     const genericProd = new Mult('prod');
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
-    let mpGain = 1, ppGain = 1, techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
+    let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
     let offlineSlow = 0.25, autoTech = false, lastStand = false, centerLv = 0;
     genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', '记忆累积（覆灭次数）');
     for (const n of GENERIC_TREE) {
@@ -232,8 +232,8 @@ export class Engine {
         case 'g7': centerLv = lv; break;
         case 'g8': genericProd.mul(Dec.pow(2, lv), n.id, n.name); break;
         case 'g9': genericEta.mul(Dec.pow(10, lv), n.id, n.name); break;
-        case 'g10': mpGain *= Math.pow(5, lv); break;
-        case 'g11': ppGain *= Math.pow(5, lv); break;
+        case 'g10': mpGain = mpGain.mul(Dec.pow(5, lv)); break;
+        case 'g11': ppGain = ppGain.mul(Dec.pow(5, lv)); break;
         case 'g12': genericDmg.mul(Dec.pow(d(1 + 0.5 * lv), 0.5 * lv), n.id, n.name); break;
         case 'g13': techCostMult *= Math.pow(0.97, lv); break;
         default: break;

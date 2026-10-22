@@ -88,7 +88,7 @@ function upgradeListVM(charId) {
     const bulk = engine.bulkInfo(charId, i, TUNING.bulkGroup);
     return {
       key: u.id, name: u.name, level: lv, maxLevel, maxed, unlocked,
-      levelText: `Lv ${lv} / ${maxLevel}`,
+      levelText: maxLevel === Infinity ? `Lv ${lv}` : `Lv ${lv} / ${maxLevel}`,
       reqText: unlocked ? '' : `需要「${prevName}」Lv${u.reqLevel}`,
       desc: u.desc(lv, b.ctx),
       preview: engine.upgradePreview(charId, i),
