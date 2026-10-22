@@ -1,0 +1,1038 @@
+// src/engine.js — 游戏引擎（纯逻辑，无渲染；Web 与模拟器共用）
+// 结构照抄 AD：Currency(资源) / Effect(效果) / ExponentialCostScaling(成本) /
+// GameDatabase(数据表 db.js) / tick 循环 / 存档。
+// 深渊 tick、角色系统、剧情系统是本作自有逻辑。
+
+import { Dec, D, formatScientific } from './num.js';
+import { CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, TUNING, costOf, treeLayerCost } from './db.js';
+import { STORY } from './story.js';
+
+export const STATE_VERSION = 1;
+export const ENGINE_VERSION = 1;
+const AP_GUARD = [1, 2, 4, 8];
+const AP_COLLAPSE = [1, 1, 1, 1];
+
+// ─────────────────────────────────────────────
+// 深渊
+// ─────────────────────────────────────────────
+export function tierCapLog(tier) {
+  return TUNING.tierExponents[tier] + Math.log10(TUNING.tierMantissa);
+}
+export function tierCap(tier) {
+  return Dec.pow10(tierCapLog(tier));
+}
+export function tierStartLog(tier, startAbyssMult = 1) {
+  return tierCapLog(tier) * TUNING.startFraction + Math.log10(startAbyssMult);
+}
+// 深渊本 tick 的对数增速（数量级/秒）：dy/dt = D·e^(t/τ)/τ
+export function abyssRate(tier, t) {
+  const span = tierCapLog(tier) * TUNING.startFraction;
+  return (span * Math.exp(t / TUNING.tau)) / TUNING.tau;
+}
+
+// ─────────────────────────────────────────────
+// 状态
+// ─────────────────────────────────────────────
+export function createInitialState() {
+  const s = {
+    v: STATE_VERSION,
+    tier: 0,
+    mtc: Dec.zero(),
+    mp: Dec.zero(),
+    pp: Dec.zero(),
+    ap: Dec.zero(),
+    t: 0,
+    S: Dec.zero(),
+    run: { peakProd: Dec.zero(), bestPurify: 0 },
+    chars: {},
+    generic: {},
+    stats: {
+      cycles: 0, guards: 0, clears: 0, playTime: 0,
+      firstGuard: [false, false, false, false],
+      firstCollapse: [false, false, false, false],
+      tierGuards: [0, 0, 0, 0],
+      tierCollapses: [0, 0, 0, 0],
+      runLog: [],
+    },
+    unlocked: ['249'],
+    caches: { baiqiStock: Dec.zero(), drained: Dec.zero(), lastPeakProd: Dec.zero() },
+    won: false,
+    paused: false,          // 暂停：不跑 tick，但可以买东西
+    pending: null,          // null | 'guard' | 'collapse'：等待玩家点「净化 / 覆灭」
+    storyQueue: [],         // 待播放剧情 id
+    storySeen: [],          // 已播放过的剧情 id
+    storyActive: false,     // 正在播放剧情（暂停的一种）
+  };
+  for (const id of CHARACTER_ORDER) {
+    s.chars[id] = {
+      upgrades: CHARACTERS[id].upgrades.map(() => 0),
+      techs: CHARACTERS[id].techs.map(() => 0),
+      tree: {},
+      autoTimer: 0,
+      techTimer: 0,
+    };
+  }
+  for (const n of GENERIC_TREE) s.generic[n.id] = 0;
+  s.S = Dec.pow10(tierStartLog(0));
+  return s;
+}
+
+export function serialize(state) {
+  return JSON.stringify(state, (k, v) => (v instanceof Dec ? (v.m === 0 ? 0 : `${v.m}e${v.e}`) : v));
+}
+
+export function deserialize(text) {
+  const raw = typeof text === 'string' ? JSON.parse(text) : text;
+  const base = createInitialState();
+  const merged = Object.assign(base, raw);
+  for (const k of ['mtc', 'mp', 'pp', 'ap', 'S']) merged[k] = Dec.from(raw[k] ?? 0);
+  if (raw.run) merged.run = { peakProd: Dec.from(raw.run.peakProd ?? 0), bestPurify: raw.run.bestPurify || 0 };
+  if (raw.caches) {
+    for (const k of Object.keys(base.caches)) merged.caches[k] = Dec.from(raw.caches[k] ?? 0);
+  }
+  if (raw.chars) {
+    for (const id of CHARACTER_ORDER) {
+      if (!raw.chars[id]) continue;
+      merged.chars[id] = Object.assign(merged.chars[id], raw.chars[id]);
+      merged.chars[id].upgrades = (raw.chars[id].upgrades || []).map(Number);
+      merged.chars[id].techs = (raw.chars[id].techs || []).map(Number);
+    }
+  }
+  merged.stats = Object.assign(base.stats, raw.stats || {});
+  return merged;
+}
+
+const d = (x) => (x instanceof Dec ? x : Dec.from(x));
+
+// MP / PP / AP 一律整数：获取向下取整、消耗向上取整
+const fmtSmall = (v) => {
+  const x = d(v);
+  const lg = Dec.log10(x);
+  if (!isFinite(lg)) return '—';
+  if (lg < 6 && lg > -6) return x.toNumber().toFixed(2);
+  return formatScientific(x);
+};
+
+export const intFloor = (x) => {
+  const v = d(x);
+  const lg = Dec.log10(v);
+  if (!isFinite(lg) || lg < 0) return Dec.zero();
+  if (lg > 15) return v;                      // 大到不该出现在资源上，原样返回
+  return Dec.from(Math.floor(v.toNumber()));
+};
+export const intRound = (x) => {
+  const v = d(x);
+  const lg = Dec.log10(v);
+  if (!isFinite(lg) || lg < 0) return Dec.zero();
+  if (lg > 15) return v;
+  return Dec.from(Math.round(v.toNumber()));
+};
+
+export const intCeil = (x) => {
+  const v = d(x);
+  const lg = Dec.log10(v);
+  if (!isFinite(lg) || lg <= 0) return Dec.one();
+  if (lg > 15) return v;
+  return Dec.from(Math.ceil(v.toNumber()));
+};
+
+// 效果累乘器：同时为「数值贡献面板」提供每一项的 log10 贡献
+class Mult {
+  constructor(kind) {
+    this.kind = kind;
+    this.log = 0;
+    this.parts = [];
+    this.base = Dec.one();
+  }
+  mul(v, id, name) {
+    const dec = d(v);
+    const lg = Dec.log10(dec);
+    if (!isFinite(lg) || Math.abs(lg) < 1e-12) return this;
+    this.log += lg;
+    this.parts.push({ id, name, log: lg });
+    return this;
+  }
+  addBase(v) {
+    this.base = this.base.add(v);
+    return this;
+  }
+  value() {
+    if (!isFinite(this.log)) return Dec.pow10(this.log > 0 ? 1e9 : -1e9);
+    return Dec.mul(this.base, Dec.pow10(this.log));
+  }
+}
+
+// ─────────────────────────────────────────────
+// 引擎
+// ─────────────────────────────────────────────
+export class Engine {
+  constructor(state) {
+    this.s = state || createInitialState();
+    this.b = null;
+    this.baiqiPowerTree = 0;
+    this.abyssRateMult = 1;
+    this.offlineMult = 1;   // 离线时深渊增速倍率
+  }
+
+  get state() { return this.s; }
+  isUnlocked(id) { return this.s.unlocked.includes(id); }
+
+  buildCtx() {
+    const s = this.s;
+    const sumL = {}, nTree = {};
+    let sumLAll = 0, nTreeAll = 0;
+    for (const id of CHARACTER_ORDER) {
+      const c = s.chars[id];
+      const unlocked = this.isUnlocked(id);
+      const sl = unlocked ? c.upgrades.reduce((a, b) => a + b, 0) : 0;
+      const nt = unlocked ? Object.keys(c.tree).length : 0;
+      sumL[id] = sl; nTree[id] = nt;
+      sumLAll += sl; nTreeAll += nt;
+    }
+    const yS = Dec.log10(s.S);
+    const y0 = tierStartLog(s.tier, Math.pow(0.9, s.generic['g6'] || 0));
+    const progress = Math.max(0, Math.min(1, 1 - yS / Math.max(1, y0)));
+    const b = this.b;
+    return {
+      t: s.t, tier: s.tier, mtc: s.mtc, S: s.S,
+      cap: tierCap(s.tier), yS, yCap: tierCapLog(s.tier), y0, progress,
+      cycles: s.stats.cycles, guards: s.stats.guards,
+      sumL, nTree, sumLAll, nTreeAll,
+      maxProd: s.run.peakProd,
+      prod249: (b && b.prod249) || Dec.one(),
+      lineProd: (b && b.lineProd) || Dec.zero(),
+      hengPowerRaw: (b && b.hengPower) || Dec.one(),
+      atkSpeed: (b && b.atkSpeed) || 1,
+      genericLv: (id) => s.generic[id] || 0,
+      genericCostMult: Math.pow(0.88, s.generic['g3'] || 0),
+    };
+  }
+
+  computeBonuses() {
+    const s = this.s;
+    this.abyssRateMult = 1;
+    this.baiqiPowerTree = 0;
+    const ctx = this.buildCtx();
+    const g = (id) => s.generic[id] || 0;
+
+    // ── 通用树（PP）──
+    const genericProd = new Mult('prod');
+    const genericEta = new Mult('eta');
+    const genericDmg = new Mult('damage');
+    let mpGain = 1, ppGain = 1, techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
+    let offlineSlow = 0.25, autoTech = false, lastStand = false, centerLv = 0;
+    genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', '记忆累积（覆灭次数）');
+    for (const n of GENERIC_TREE) {
+      const lv = g(n.id);
+      if (!lv) continue;
+      switch (n.id) {
+        case 'g1': genericProd.mul(Dec.pow(d(1 + 0.1 * ctx.sumLAll), 0.5), n.id, n.name); break;
+        case 'g2': genericEta.mul(Dec.pow(d(1 + 0.1 * ctx.sumLAll), 0.5), n.id, n.name); break;
+        case 'g5': lastStand = true; break;
+        case 'g7': centerLv = lv; break;
+        case 'g8': genericProd.mul(Dec.pow(2, lv), n.id, n.name); break;
+        case 'g9': genericEta.mul(Dec.pow(10, lv), n.id, n.name); break;
+        case 'g10': mpGain *= Math.pow(5, lv); break;
+        case 'g11': ppGain *= Math.pow(5, lv); break;
+        case 'g12': genericDmg.mul(Dec.pow(d(1 + 0.5 * lv), 0.5 * lv), n.id, n.name); break;
+        case 'g13': techCostMult *= Math.pow(0.97, lv); break;
+        default: break;
+      }
+    }
+
+    // ── 249 ──
+    const prod249 = new Mult('prod');
+    const eta = new Mult('eta');
+    const speed = new Mult('speed');
+    const startProd = new Mult('start');
+    let keepMtc = 0, singularity = false, mpTechBonus = 1, mpTech249 = 1, ppTech249 = 1;
+    if (this.isUnlocked('249')) {
+      const c = s.chars['249'];
+      const def = CHARACTERS['249'];
+      for (let i = 0; i < def.upgrades.length; i++) {
+        const u = def.upgrades[i];
+        const lv = c.upgrades[i];
+        if (lv <= 0) continue;
+        if (u.kind === 'prod') {
+          prod249.mul(u.mul(lv, ctx), u.id, u.name);
+          if (u.id === '249u8') eta.mul(d(1 + 0.1 * lv), '249u8e', '产线总控·净化');
+        } else if (u.kind === 'eta') eta.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'speed') speed.mul(u.mul(lv, ctx), u.id, u.name);
+      }
+      for (let i = 0; i < def.techs.length; i++) {
+        const tc = def.techs[i];
+        const lv = c.techs[i];
+        if (lv <= 0) continue;
+        if (tc.kind === 'prodByTime') prod249.mul(d(1 + 0.05 * lv * (ctx.t / 60)), tc.id, tc.name);
+        else if (tc.kind === 'mpByTime') mpTech249 *= 1 + 0.1 * lv * (ctx.t / 60);
+        else if (tc.kind === 'ppByEarliness') ppTech249 *= 1 + 0.1 * lv * Math.max(0, (TUNING.fillSeconds - ctx.t)) / 60;
+      }
+      const nt = ctx.nTree['249'];
+      for (const node of def.tree) {
+        if (!c.tree[node.id]) continue;
+        switch (node.id) {
+          case '249a1': keepMtc = 0.2; break;
+          case '249a2': speed.mul(d(1 + 0.15 * nt), node.id, node.name); break;
+          case '249a3': mpTechBonus *= (1 + ctx.cycles / 4); break;
+          case '249a4': eta.mul(d(1 + 0.8 * ctx.progress), node.id, node.name); break;
+          case '249a5': startProd.mul(d(1 + 0.5 * nt), node.id, node.name); break;
+          case '249a7': prod249.mul(Dec.pow(d(1 + 0.01 * ctx.sumLAll), 0.5), node.id, node.name); break;
+          case '249a8': prod249.mul(d(Math.min(2, 1 + ctx.t / 300)), node.id, node.name); break;
+          case '249a9': prod249.mul(d(2), node.id, node.name); singularity = true; break;
+          default: break;
+        }
+      }
+    }
+    prod249.mul(speed.value(), 'speed', '时钟校准/时间加速');
+    const prod249Base = prod249.value();
+
+    // ── 耶维奇 ──
+    const line = new Mult('line');
+    const prod249Extra = new Mult('prod249');
+    const powerAll = new Mult('powerAll');
+    const mtcGain = new Mult('mtc');
+    let ppConv = 0;
+    if (this.isUnlocked('yewei')) {
+      const c = s.chars.yewei;
+      const def = CHARACTERS.yewei;
+      const l1 = c.upgrades[0];
+      if (l1 > 0) line.addBase(prod249Base.mul(0.004 * l1));
+      for (let i = 1; i < def.upgrades.length; i++) {
+        const u = def.upgrades[i];
+        const lv = c.upgrades[i];
+        if (lv <= 0) continue;
+        if (u.kind === 'line') line.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'prodAll') prod249.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'prod249') prod249Extra.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'powerAll') powerAll.mul(u.mul(lv, ctx), u.id, u.name);
+      }
+      const t4 = c.techs[3];
+      if (t4 > 0) ppConv = (0.3 * t4) / (1 + 0.3 * t4);
+      const nt = ctx.nTree.yewei;
+      for (const node of def.tree) {
+        if (!c.tree[node.id]) continue;
+        switch (node.id) {
+          case 'ywa1': line.mul(d(1 + 0.2 * ctx.cycles), node.id, node.name); break;
+          case 'ywa2': this.abyssRateMult = Math.pow(0.9, nt); break;
+          case 'ywa3': costMult *= Math.pow(0.9, nt); break;
+          case 'ywa4': this.baiqiPowerTree = 1 + 0.3 * ctx.sumL.yewei * nt; break;
+          case 'ywa5': prod249.mul(d(1 + 0.2 * nt), node.id, node.name); break;
+          case 'ywa6': line.mul(d(1 + 0.1 * ctx.sumL.yewei), node.id, node.name); break;
+          case 'ywa7': mtcGain.mul(d(1 + 0.5 * ctx.cycles), node.id, node.name); break;
+          case 'ywa8': line.mul(d(1 + 0.5 * nt), node.id, node.name); break;
+          case 'ywa9': {
+            line.mul(d(1 + 0.15 * Math.max(0, Dec.log10(Dec.max(prod249.value(), 1)))), node.id, node.name);
+            prod249Extra.mul(d(1 + 0.15 * Math.max(0, Dec.log10(Dec.max(line.value(), 1)))), node.id, '万事屋本店·反哺');
+            break;
+          }
+          default: break;
+        }
+      }
+    }
+    const prod249Final = prod249.value().mul(prod249Extra.value());
+    let prodTotal = prod249Final.add(line.value());
+    if (singularity) prodTotal = prodTotal.add(Dec.pow(Dec.max(s.mtc, 1), 0.5));
+    // 通用乘区（含记忆累积、奶茶翻倍等）作用在全体产量上
+    prodTotal = prodTotal.mul(genericProd.value());
+
+    // ── 白琦 ──
+    const powerBq = new Mult('power');
+    const dmgBq = new Mult('damage');
+    const rateBq = new Mult('rate');
+    let critRate = 0, critDmg = 0, dragonLayers = 0, dragonMul = 1, lifesteal = 0, executeMul = 1;
+    if (this.isUnlocked('baiqi')) {
+      const c = s.chars.baiqi;
+      const def = CHARACTERS.baiqi;
+      const l1 = c.upgrades[0];
+      if (l1 > 0) rateBq.mul(def.upgrades[0].rate(l1), 'bqu1', '剑意');
+      for (let i = 1; i < def.upgrades.length; i++) {
+        const u = def.upgrades[i];
+        const lv = c.upgrades[i];
+        if (lv <= 0) continue;
+        if (u.kind === 'power') powerBq.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'damage') dmgBq.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'critRate') critRate += u.critRate(lv);
+        else if (u.kind === 'critDmg') critDmg += u.critDmg(lv);
+        else if (u.kind === 'dragon') dragonLayers = Math.min(4, Math.floor(10 / Math.max(0.4, u.cooldown(lv))));
+        else if (u.kind === 'dragonPower') dragonMul = u.dragonMul(lv);
+        else if (u.kind === 'powerRate') rateBq.mul(u.mul(lv, ctx), u.id, u.name);
+      }
+      const t3 = c.techs[2], t4 = c.techs[3];
+      if (t3 > 0) lifesteal = 0.03 * t3;
+      if (t4 > 0 && ctx.progress >= 0.6) executeMul = Math.pow(1 + t4, 2);
+      const nt = ctx.nTree.baiqi;
+      for (const node of def.tree) {
+        if (!c.tree[node.id]) continue;
+        switch (node.id) {
+          case 'bqa1': powerBq.mul(d(1 + 0.2 * ctx.sumLAll), node.id, node.name); break;
+          case 'bqa2': dmgBq.mul(Dec.pow(d(1 + 1.5 * ctx.progress), 2), node.id, node.name); break;
+          case 'bqa3': critRate += 0.08 * nt; break;
+          case 'bqa4': dmgBq.mul(Dec.pow(d(1 + ctx.t / 120), 0.5), node.id, node.name); break;
+          case 'bqa5': dmgBq.mul(d(1 + 0.1 * ctx.sumLAll), node.id, node.name); break;
+          case 'bqa6': critDmg += 0.6 * nt; break;
+          case 'bqa7': {
+            const cd = 60 * Math.pow(0.95, c.upgrades[5]) * Math.pow(0.8, nt);
+            dragonLayers = Math.max(dragonLayers, Math.min(4, Math.floor(10 / Math.max(0.4, cd))));
+            break;
+          }
+          case 'bqa8': dragonMul *= 1 + 0.5 * ctx.sumL.baiqi; break;
+          case 'bqa9': break;
+          default: break;
+        }
+      }
+      if (this.baiqiPowerTree) powerBq.mul(d(this.baiqiPowerTree), 'bqa4y', '挚友');
+      powerBq.mul(powerAll.value(), 'powerAll', '万事通');
+      dmgBq.mul(genericDmg.value(), 'genericDmg', '通用树·战斗');
+    }
+    const dragonFactor = dragonLayers > 0 ? Dec.pow(10, dragonLayers * dragonMul) : Dec.one();
+    critRate = Math.min(1, critRate);
+    s.caches.rateBaiqi = rateBq.value();
+    const stockBq = d(s.caches.baiqiStock || 0).add(rateBq.value().mul(0)); // 存量在 tick 中累加
+    const powerBqVal = stockBq.mul(powerBq.value());
+    const dmgBqVal = powerBqVal.mul(0.1).mul(d(1 + critRate * (1 + critDmg))).mul(dragonFactor).mul(dmgBq.value());
+
+    // ── 恒 ──
+    let dmgHeng = Dec.zero();
+    let hengPower = Dec.zero();
+    let atkSpeed = 1;
+    if (this.isUnlocked('heng')) {
+      const c = s.chars.heng;
+      const def = CHARACTERS.heng;
+      const powerMul = new Mult('power');
+      const atkMul = new Mult('atk');
+      const dmgMul = new Mult('damage');
+      let alphaAdd = 0, alphaMul = 1, burstAlpha = 1;
+      for (let i = 0; i < def.upgrades.length; i++) {
+        const u = def.upgrades[i];
+        const lv = c.upgrades[i];
+        if (lv <= 0) continue;
+        if (u.kind === 'alpha') {
+          if (u.add) alphaAdd += u.add(lv);
+          if (u.mul) alphaMul *= d(u.mul(lv, ctx)).toNumber();
+        } else if (u.kind === 'power') powerMul.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'atkSpeed') atkMul.mul(u.mul(lv, ctx), u.id, u.name);
+        else if (u.kind === 'damage') dmgMul.mul(u.mul(lv, ctx), u.id, u.name);
+      }
+      const t2 = c.techs[1], t3 = c.techs[2], t4 = c.techs[3];
+      if (t2 > 0) {
+        const cd = 30 * Math.pow(0.95, t2) * Math.pow(0.9, t3);
+        const uptime = cd <= 10 ? 1 : 10 / cd;
+        burstAlpha = 1 + t2 * uptime * (1 + t4 * 0.5);
+      }
+      const nt = ctx.nTree.heng;
+      for (const node of def.tree) {
+        if (!c.tree[node.id]) continue;
+        switch (node.id) {
+          case 'hga1': powerMul.mul(d(1 + 0.2 * ctx.sumLAll), node.id, node.name); break;
+          case 'hga2': alphaAdd += 0.03 * nt; break;
+          case 'hga3': atkMul.mul(d(1 + 0.2 * nt), node.id, node.name); break;
+          case 'hga4': dmgMul.mul(Dec.pow(d(1 + 1.5 * ctx.progress), 2), node.id, node.name); break;
+          case 'hga5': alphaMul *= d(1 + 0.1 * ctx.sumL.heng).toNumber(); break;
+          case 'hga7': powerMul.mul(Dec.pow(d(1 + ctx.t / 120), 0.5), node.id, node.name); break;
+          case 'hga8': powerMul.mul(d(1 + 0.5 * ctx.cycles), node.id, node.name); break;
+          case 'hga9': atkMul.mul(d(Math.min(3, 1 + ctx.t / 120)), node.id, node.name); break;
+          default: break;
+        }
+      }
+      powerMul.mul(powerAll.value(), 'powerAll', '万事通');
+      dmgMul.mul(genericDmg.value(), 'genericDmg', '通用树·战斗');
+      atkSpeed = atkMul.value().toNumber();
+      const alpha = Math.min(TUNING.alphaCap, (0.25 + alphaAdd) * alphaMul * Math.min(2, burstAlpha));
+      const ratio = Dec.div(Dec.max(s.S, d(1e-300)), Dec.pow10(ctx.y0));
+      hengPower = Dec.mul(d(10), Dec.pow(Dec.max(ratio, d(1e-12)), alpha)).mul(powerMul.value());
+      let eff = hengPower.mul(0.1).mul(dmgMul.value());
+      if (atkSpeed > 20) eff = eff.mul(d(atkSpeed / 20));
+      if (c.tree['hga6']) {
+        const drain = 0.0005 * ctx.nTree.heng;
+        const amt = s.S.mul(drain * TUNING.tickSeconds);
+        s.caches.drained = d(s.caches.drained || 0).add(amt);
+        hengPower = hengPower.add(s.caches.drained);
+        eff = eff.add(s.caches.drained.mul(0.1).mul(dmgMul.value()));
+      }
+      dmgHeng = eff.mul(executeMul);
+      s.caches.hengPower = hengPower;
+      s.caches.atkSpeed = atkSpeed;
+    }
+
+    const etaVal = eta.value().mul(genericEta.value());
+    s.caches.prod249 = prod249Final;
+    s.caches.lineProd = line.value();
+    const dmgTotal = dmgBqVal.add(dmgHeng);
+
+    const b = {
+      ctx,
+      prodTotal,
+      prod249: prod249Final,
+      lineProd: line.value(),
+      eta: etaVal,
+      purifyTea: prodTotal.mul(etaVal),
+      powerBaiqi: powerBqVal,
+      dmgBaiqi: dmgBqVal,
+      dmgHeng,
+      hengPower,
+      atkSpeed,
+      dmgTotal,
+      mtcGain: mtcGain.value(),
+      mpGain: d(mpGain).mul(d(mpTechBonus)).mul(d(mpTech249)),
+      techCostMult,
+      ppGain: d(ppGain).mul(d(ppTech249)),
+      costMult,
+      keepMtc,
+      startProdMult: startProd.value(),
+      offlineSlow,
+      autoTech: centerLv >= 1,
+      autoGuard: centerLv >= 2,
+      centerLv,
+      lastStand,
+      lifesteal,
+      ppConv,
+      dragonLayers,
+      magicTree: 0,
+      contrib: {
+        prod: [...prod249.parts, ...prod249Extra.parts, ...line.parts, ...genericProd.parts],
+        eta: [...eta.parts, ...genericEta.parts],
+        damage: [...dmgBq.parts, ...genericDmg.parts],
+        power: [...powerBq.parts],
+      },
+      parts: {
+        prod249: prod249.parts, line: line.parts, eta: eta.parts,
+        genericProd: genericProd.parts, genericEta: genericEta.parts,
+      },
+    };
+    this.b = b;
+    return b;
+  }
+
+  bonuses() {
+    if (!this.b) return this.computeBonuses();
+    return this.b;
+  }
+
+  // ── tick ──
+  tick(dt = TUNING.tickSeconds) {
+    const s = this.s;
+    if (s.won) return null;
+    if (s.paused || s.pending) return null;   // 暂停/待结算：不推进任何 tick
+    const b = this.computeBonuses();
+    s.t += dt;
+    s.stats.playTime += dt;
+
+    // 1. 产量累加
+    const gain = b.prodTotal.mul(dt).mul(b.mtcGain);
+    s.mtc = s.mtc.add(gain);
+    if (Dec.gt(b.prodTotal, s.run.peakProd)) s.run.peakProd = b.prodTotal.clone();
+
+    // 白琦剑意存量
+    s.caches.baiqiStock = d(s.caches.baiqiStock || 0).add((s.caches.rateBaiqi || Dec.zero()).mul(dt));
+
+    // 2. 战斗结算（净化 + 战斗伤害）
+    const totalDmg = b.purifyTea.add(b.dmgTotal);
+    if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
+      s.S = Dec.sub(s.S, totalDmg.mul(dt));
+      if (b.lifesteal > 0 && Dec.gt(b.dmgTotal, 0)) {
+        // 吸血：把伤害的一小部分转为 mtc，但不超过本 tick 产量的一个比例（避免线性反哺爆表）
+        const cap = b.prodTotal.mul(dt * 0.5);
+        const add = Dec.min(b.dmgTotal.mul(b.lifesteal * dt), cap);
+        s.mtc = s.mtc.add(add);
+      }
+      if (b.ppConv > 0 && Dec.gt(b.lineProd, 1)) {
+        // 资源转化：按对数软上限把独立产线转成 PP（避免直接线性搬运爆表）
+        const lp = Dec.log10(b.lineProd);
+        s.pp = intRound(s.pp.add(d(b.ppConv * Math.log10(1 + Math.max(0, lp)) * dt * 2)));
+      }
+    }
+    if (Dec.lte(s.S, 0)) {
+      this.enterPending('guard');
+      if (b.autoGuard) { s.storyQueue.length = 0; this.resolvePending(); return null; }
+      return 'guard';
+    }
+    const p = Math.max(0, Math.min(1, 1 - Dec.log10(s.S) / Math.max(1, b.ctx.y0)));
+    if (p > s.run.bestPurify) s.run.bestPurify = p;
+
+    // 3. 深渊增长（超指数）
+    const rate = abyssRate(s.tier, s.t) * this.abyssRateMult * this.offlineMult;
+    if (rate > 0 && Dec.gt(s.S, 0)) s.S = Dec.pow10(Dec.log10(s.S) + rate * dt);
+
+    // 3.5 屠龙者（白琦 5 层）：每分钟把深渊进度（对数）压低 8%
+    if (this.isUnlocked('baiqi') && s.chars.baiqi.tree['bqa9'] && Dec.gt(s.S, 0)) {
+      s.caches.abyssCutTimer = (s.caches.abyssCutTimer || 0) + dt;
+      if (s.caches.abyssCutTimer >= 60) {
+        s.caches.abyssCutTimer -= 60;
+        const yS = Dec.log10(s.S);
+        const y0 = b.ctx.y0;
+        if (yS > y0) s.S = Dec.pow10(yS - 0.08 * (yS - y0));
+      }
+    }
+
+    // 4. 边界判定
+    if (Dec.gte(s.S, tierCap(s.tier))) {
+      this.enterPending('collapse');
+      if (b.autoTech) { s.storyQueue.length = 0; this.resolvePending(); return null; }
+      return 'collapse';
+    }
+
+    // 5. 自动购买
+    this.runAutobuyers(dt);
+    this.runAutoTrunks(dt);
+    return null;
+  }
+
+  advance(seconds) {
+    const dt = TUNING.tickSeconds;
+    let left = seconds, n = 0;
+    while (left > 1e-9 && !this.s.won) {
+      // 离线：剧情不逐段播，待结算自动点掉，保证挂机能继续推进
+      while (this.s.storyQueue.length) this.finishStory();
+      if (this.s.pending) this.resolvePending();
+      if (this.s.pending) break;
+      const step = Math.min(dt, left);
+      this.tick(step);
+      left -= step;
+      if (++n > 5e6) break;
+    }
+    return n;
+  }
+
+  // ── 购买 ──
+  // AD 同款：每买满 10 级，成本倍率本身翻一倍（cost = base × (mult × 2^⌊L/10⌋)^L）
+  groupCostMult(level) {
+    return Math.pow(TUNING.groupCostMult, Math.floor(level / TUNING.bulkGroup));
+  }
+
+  costOfUpgrade(charId, idx, level) {
+    const base = CHARACTERS[charId].upgrades[idx].cost(level);
+    const b = this.bonuses();
+    return base.mul(this.groupCostMult(level)).mul(b.costMult).mul(d(b.ctx.genericCostMult));
+  }
+
+  // 本次点击最多能买几个（上限 10），以及总价
+  // 每次点击最多买到「下一个 10 的倍数」：36 → 40，10 → 20，买不起就尽量买
+  bulkInfo(charId, idx) {
+    let lv = this.s.chars[charId].upgrades[idx];
+    let total = Dec.zero();
+    let n = 0;
+    if (!this.upgradeUnlocked(charId, idx)) return { count: 0, total, level: lv, target: lv };
+    const cap0 = CHARACTERS[charId].upgrades[idx].maxLevel || 10;
+    const target = Math.min(cap0, (Math.floor(lv / TUNING.bulkGroup) + 1) * TUNING.bulkGroup);
+    const maxAdd = Math.max(0, target - lv);
+    while (n < maxAdd) {
+      const cost = this.costOfUpgrade(charId, idx, lv);
+      if (Dec.lt(this.s.mtc, Dec.add(total, cost))) break;
+      total = total.add(cost);
+      n++;
+      lv++;
+    }
+    return { count: n, total, level: lv, target };
+  }
+
+  buyUpgradeBulk(charId, idx) {
+    const info = this.bulkInfo(charId, idx);
+    if (info.count === 0) return info;
+    const c = this.s.chars[charId];
+    this.s.mtc = this.s.mtc.sub(info.total);
+    c.upgrades[idx] = info.level;
+    this.b = null;
+    return info;
+  }
+
+  // 单项科技「当前加成」文案
+  techPreview(charId, idx, level) {
+    const def = CHARACTERS[charId].techs[idx];
+    const lv = level === undefined ? this.s.chars[charId].techs[idx] : level;
+    const ctx = this.bonuses().ctx;
+    if (def.kind === 'auto') return lv <= 0 ? '未解锁' : lv <= 8 ? `自动买 1–${lv}` : `间隔 ×0.9^${lv - 8}`;
+    if (def.kind === 'mpBuy') return `换 ${(2 * Math.pow(1.5, lv)).toFixed(1)} MP`;
+    if (def.kind === 'offline') return `离线 ${Math.min(100, 50 + 10 * lv)}%`;
+    if (def.kind === 'ppConv') return `转化 ${((0.3 * lv) / (1 + 0.3 * lv)).toFixed(3)}`;
+    if (def.kind === 'charge') return `下一击 ×${(1 + 1.5 * lv).toFixed(2)}`;
+    if (def.kind === 'lifesteal') return `吸血 ${(3 * lv).toFixed(0)}%`;
+    if (def.kind === 'execute') return `斩杀 ×${Math.pow(1 + lv, 2).toFixed(1)}`;
+    if (def.kind === 'burst') return `爆发 α ×${(1 + lv).toFixed(1)}`;
+    if (def.kind === 'burstCD') return `冷却 ×${Math.pow(0.9, lv).toFixed(3)}`;
+    if (def.kind === 'burstPower') return `爆发伤害 ×${(1 + lv).toFixed(1)}`;
+    if (def.mul) return `×${fmtSmall(def.mul(lv, ctx))}`;
+    return '—';
+  }
+
+  // 单项升级「当前总加成」文案
+  upgradePreview(charId, idx, level) {
+    const def = CHARACTERS[charId].upgrades[idx];
+    const lv = level === undefined ? this.s.chars[charId].upgrades[idx] : level;
+    const ctx = this.bonuses().ctx;
+    const pctOf = (x) => `+${(x * 100).toFixed(1)}%`;
+    if (def.kind === 'critRate') return `暴击率 ${pctOf(def.critRate(lv))}`;
+    if (def.kind === 'critDmg') return `暴伤 ${pctOf(def.critDmg(lv))}`;
+    if (def.kind === 'dragon') return `冷却 ${def.cooldown(lv).toFixed(2)}s`;
+    if (def.kind === 'dragonPower') return `每层强度 ×${def.dragonMul(lv).toFixed(2)}`;
+    if (def.kind === 'alpha') {
+      if (def.add) return `α +${def.add(lv).toFixed(2)}`;
+      if (def.mul) return `α ×${d(def.mul(lv, ctx)).toNumber().toFixed(2)}`;
+      return '—';
+    }
+    if (def.kind === 'auto') {
+      return lv <= 0 ? '未解锁' : lv <= 8 ? `自动买 1–${lv}` : `间隔 ×0.9^${lv - 8}`;
+    }
+    if (def.kind === 'mpBuy') return `换 ${(2 * Math.pow(1.5, lv)).toFixed(1)} MP`;
+    if (def.kind === 'offline') return `离线 ${Math.min(100, 50 + 10 * lv)}%`;
+    if (def.kind === 'ppConv') return `转化 ${((0.3 * lv) / (1 + 0.3 * lv)).toFixed(3)}`;
+    if (def.kind === 'line') return `独立产线 ${(0.4 * lv).toFixed(1)}%`;
+    if (def.rate) return `×${fmtSmall(def.rate(lv))}/s`;
+    if (def.mul) return `×${fmtSmall(def.mul(lv, ctx))}`;
+    return '—';
+  }
+
+  upgradeUnlocked(charId, idx) {
+    if (idx === 0) return true;
+    const def = CHARACTERS[charId].upgrades[idx];
+    const need = def.reqLevel || 0;
+    if (!need) return true;
+    return (this.s.chars[charId].upgrades[idx - 1] || 0) >= need;
+  }
+
+  buyUpgrade(charId, idx, howMany = 1) {
+    const s = this.s;
+    const c = s.chars[charId];
+    const def = CHARACTERS[charId].upgrades[idx];
+    if (!this.upgradeUnlocked(charId, idx)) return 0;
+    let bought = 0;
+    const maxLevel = def.maxLevel || 10;
+    for (let i = 0; i < howMany; i++) {
+      const lv = c.upgrades[idx];
+      if (lv >= maxLevel) break;
+      const cost = this.costOfUpgrade(charId, idx, lv);
+      if (Dec.lt(s.mtc, cost)) break;
+      s.mtc = s.mtc.sub(cost);
+      c.upgrades[idx] = lv + 1;
+      if (def.database) s.db[def.id] = c.upgrades[idx];
+      bought++;
+    }
+    if (bought) this.b = null;
+    return bought;
+  }
+
+  buyMaxUpgrade(charId, idx, cap = 5000) {
+    let total = 0;
+    while (total < cap) {
+      if (!this.buyUpgrade(charId, idx, 1)) break;
+      total++;
+    }
+    return total;
+  }
+
+  costOfTech(charId, idx, level) {
+    const b = this.bonuses();
+    return intCeil(CHARACTERS[charId].techs[idx].cost(level).mul(d(b.techCostMult || 1)));
+  }
+
+  buyTech(charId, idx) {
+    const s = this.s;
+    const c = s.chars[charId];
+    const lv = c.techs[idx];
+    const capT = CHARACTERS[charId].techs[idx].maxLevel || 20;
+    if (lv >= capT) return false;
+    if (Dec.lt(s.mp, this.costOfTech(charId, idx, lv))) return false;
+    s.mp = intRound(s.mp.sub(this.costOfTech(charId, idx, lv)));
+    c.techs[idx] = lv + 1;
+    this.b = null;
+    return true;
+  }
+
+  costOfTreeNode(charId, layer) {
+    return intCeil(treeLayerCost(layer));
+  }
+
+  buyTreeNode(charId, nodeId) {
+    const s = this.s;
+    const c = s.chars[charId];
+    const node = CHARACTERS[charId].tree.find((n) => n.id === nodeId);
+    if (!node || c.tree[nodeId]) return false;
+    let maxLayer = 0;
+    for (const n of CHARACTERS[charId].tree) if (c.tree[n.id]) maxLayer = Math.max(maxLayer, n.layer);
+    if (node.layer > maxLayer + 1) return false;
+    // 根节点（第 1 层）还得先买下同方向的通用叶子
+    if (node.layer === 1) {
+      const leaf = GENERIC_TREE.find((g) => g.slot === 'leaf' && g.angle === CHARACTERS[charId].angle);
+      if (leaf && !(s.generic[leaf.id] > 0)) return false;
+    }
+    const cost = intCeil(treeLayerCost(node.layer));
+    if (Dec.lt(s.ap, cost)) return false;
+    s.ap = intRound(s.ap.sub(cost));
+    c.tree[nodeId] = true;
+    this.b = null;
+    return true;
+  }
+
+  respecTree(charId) {
+    const s = this.s;
+    const c = s.chars[charId];
+    let refund = Dec.zero();
+    for (const n of CHARACTERS[charId].tree) {
+      if (c.tree[n.id]) { refund = refund.add(treeLayerCost(n.layer)); delete c.tree[n.id]; }
+    }
+    s.ap = intRound(s.ap.add(refund));
+    this.b = null;
+    return refund;
+  }
+
+  costOfGeneric(nodeId, level) {
+    const node = GENERIC_TREE.find((n) => n.id === nodeId);
+    return intCeil(node.cost(level));
+  }
+
+  genericUnlocked(nodeId) {
+    const node = GENERIC_TREE.find((n) => n.id === nodeId);
+    if (!node || !node.parent) return true;
+    return (this.s.generic[node.parent] || 0) > 0;
+  }
+
+  parentName(nodeId) {
+    const node = GENERIC_TREE.find((n) => n.id === nodeId);
+    const p = node && GENERIC_TREE.find((n) => n.id === node.parent);
+    return p ? p.name : '';
+  }
+
+  buyGeneric(nodeId) {
+    const s = this.s;
+    const node = GENERIC_TREE.find((n) => n.id === nodeId);
+    if (!this.genericUnlocked(nodeId)) return false;
+    const lv = s.generic[nodeId] || 0;
+    if (node.cap && lv >= node.cap) return false;
+    if (!node.repeat && lv > 0) return false;
+    const cost = intCeil(node.cost(lv));
+    if (Dec.lt(s.pp, cost)) return false;
+    s.pp = intRound(s.pp.sub(cost));
+    s.generic[nodeId] = lv + 1;
+    this.b = null;
+    return true;
+  }
+
+  tradeMp() {
+    const s = this.s;
+    if (!this.isUnlocked('yewei')) return false;
+    const lv = s.chars.yewei.techs[1];
+    if (lv <= 0) return false;
+    const cost = Dec.mul(10, Dec.pow(2, lv));
+    if (Dec.lt(s.mtc, cost)) return false;
+    s.mtc = s.mtc.sub(cost);
+    s.mp = s.mp.add(Dec.mul(1.5, Dec.pow(1.6, lv)));
+    return true;
+  }
+
+  // 自动化中枢 3–6 级：自动买四种「翻倍」主干
+  runAutoTrunks(dt) {
+    const s = this.s;
+    const lv = s.generic.g7 || 0;
+    if (lv < 3) return;
+    const order = ['g8', 'g10', 'g11', 'g9'];
+    s.caches.trunkTimer = (s.caches.trunkTimer || 0) + dt;
+    if (s.caches.trunkTimer < 0.5) return;
+    s.caches.trunkTimer = 0;
+    for (let i = 0; i < Math.min(lv - 2, 4); i++) this.buyGeneric(order[i]);
+  }
+
+  runAutobuyers(dt) {
+    const s = this.s;
+    const b = this.bonuses();
+    for (const id of CHARACTER_ORDER) {
+      if (!this.isUnlocked(id)) continue;
+      const c = s.chars[id];
+      const autoLv = c.techs[0];
+      if (autoLv > 0) {
+        const interval = Math.max(
+          TUNING.autoBuyMinInterval,
+          TUNING.autoBuyBaseInterval * Math.pow(TUNING.autoBuyIntervalMult, Math.max(0, autoLv - 8)),
+        );
+        c.autoTimer += dt;
+        if (c.autoTimer >= interval) {
+          c.autoTimer = 0;
+          for (let i = 0; i < Math.min(autoLv, 8); i++) this.buyUpgrade(id, i, 1);
+        }
+      }
+    }
+  }
+
+  // ── 待结算（暂停等玩家点按钮）──
+  enterPending(kind) {
+    const s = this.s;
+    if (s.pending) return;
+    s.pending = kind;
+    s.paused = true;
+    // 立刻把该播的剧情塞进队列（守护/覆灭都会触发对应节点）
+    this.enqueueStory(kind);
+    this.b = null;
+  }
+
+  // 玩家点「净化 / 覆灭」按钮：结算资源、推进档位、恢复进行
+  resolvePending() {
+    const s = this.s;
+    const kind = s.pending;
+    if (!kind) return null;
+    const b = this.bonuses();
+    const tier = s.tier;
+    const out = { kind, tier, mp: Dec.zero(), pp: Dec.zero(), ap: Dec.zero(), nextTier: tier };
+
+    // MP：覆灭与守护都给（整数）
+    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(s.run.bestPurify * TUNING.mpPurifyFactor));
+    const mp = intFloor(Dec.mul(base, b.mpGain));
+    s.mp = intRound(s.mp.add(mp));
+    out.mp = mp;
+
+    if (kind === 'guard') {
+      s.stats.guards++;
+      s.stats.tierGuards[tier]++;
+      const pp = intFloor(Dec.mul(TUNING.ppPerGuard * (tier + 1), 1).mul(b.ppGain));
+      s.pp = intRound(s.pp.add(pp));
+      out.pp = pp;
+      if (!s.stats.firstGuard[tier]) {
+        s.stats.firstGuard[tier] = true;
+        const ap = intFloor(Dec.from(AP_GUARD[tier]));
+        s.ap = intRound(s.ap.add(ap));
+        out.ap = ap;
+      }
+      if (kind === 'collapse') {
+        const ppC = intFloor(Dec.mul(TUNING.ppPerGuard * 0.5 * (tier + 1), b.ppGain));
+        s.pp = intRound(s.pp.add(ppC));
+        out.pp = ppC;
+      }
+      s.stats.cycles++;
+      s.stats.runLog.push({ kind: 'guard', tier, t: Math.round(s.t), purify: 1 });
+      if (tier >= TUNING.maxTier) {
+        s.won = true;
+        s.stats.clears++;
+      } else {
+        s.tier = tier + 1;
+        out.nextTier = s.tier;
+        this.unlockForTier(s.tier);
+        this.startRun(s.tier, false);
+      }
+    } else {
+      s.stats.cycles++;
+      s.stats.tierCollapses[tier]++;
+      if (!s.stats.firstCollapse[tier]) {
+        s.stats.firstCollapse[tier] = true;
+        const ap = intFloor(Dec.from(AP_COLLAPSE[tier]));
+        s.ap = intRound(s.ap.add(ap));
+        out.ap = ap;
+      }
+      s.stats.runLog.push({ kind: 'collapse', tier, t: Math.round(s.t), purify: Math.round(s.run.bestPurify * 1000) / 1000 });
+      if (s.stats.runLog.length > 5000) s.stats.runLog.shift();
+      s.tier = 0;
+      out.nextTier = 0;
+      this.startRun(0, true);
+    }
+
+    s.pending = null;
+    s.paused = s.storyQueue.length > 0 || s.storyActive;
+    this.b = null;
+    return out;
+  }
+
+  // ── 剧情 ──
+  enqueueStory(event) {
+    const s = this.s;
+    const tier = s.tier;
+    const countOf = (ev) => (ev === 'guard' ? s.stats.tierGuards[tier] + 1 : s.stats.tierCollapses[tier] + 1);
+    for (const entry of STORY) {
+      if (s.storySeen.includes(entry.id)) continue;
+      if (entry.trigger.type !== event) continue;
+      if (entry.trigger.tier !== undefined && entry.trigger.tier !== tier) continue;
+      if (entry.trigger.count !== undefined && entry.trigger.count !== countOf(event)) continue;
+      s.storyQueue.push(entry.id);
+      s.storySeen.push(entry.id);
+    }
+    if (s.storyQueue.length) { s.paused = true; }
+  }
+
+  nextStory() {
+    const s = this.s;
+    if (!s.storyQueue.length) return null;
+    const id = s.storyQueue[0];
+    s.storyActive = true;
+    s.paused = true;
+    return STORY.find((x) => x.id === id) || null;
+  }
+
+  finishStory() {
+    const s = this.s;
+    s.storyQueue.shift();
+    s.storyActive = s.storyQueue.length > 0;
+    s.paused = s.storyQueue.length > 0 || !!s.pending;
+    return s.storyQueue.length > 0;
+  }
+
+  startStoryIfFirstRun() {
+    const s = this.s;
+    for (const entry of STORY) {
+      if (entry.trigger.type !== 'firstRun') continue;
+      if (s.storySeen.includes(entry.id)) continue;
+      s.storyQueue.push(entry.id);
+      s.storySeen.push(entry.id);
+    }
+    if (s.storyQueue.length) { s.paused = true; s.storyActive = true; }
+  }
+
+  togglePause(force) {
+    const s = this.s;
+    if (s.pending) return;
+    s.paused = force === undefined ? !s.paused : !!force;
+  }
+
+  unlockForTier(tier) {
+    for (const id of CHARACTER_ORDER) {
+      if (CHARACTERS[id].unlockTier === tier && !this.s.unlocked.includes(id)) this.s.unlocked.push(id);
+    }
+  }
+
+  startRun(tier, isCollapse) {
+    const s = this.s;
+    if (isCollapse) {
+      const keep = this.b ? this.b.keepMtc : 0;
+      s.mtc = s.mtc.mul(keep);
+      // 升级一律重置（只有科技与科技树保留）
+      for (const id of CHARACTER_ORDER) {
+        const c = s.chars[id];
+        for (let i = 0; i < c.upgrades.length; i++) c.upgrades[i] = 0;
+      }
+      s.caches.baiqiStock = Dec.zero();
+      s.caches.drained = Dec.zero();
+      s.caches.abyssCutTimer = 0;
+    }
+    s.t = 0;
+    s.run = { peakProd: Dec.zero(), bestPurify: 0 };
+    s.S = Dec.pow10(tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0)));
+    this.b = null;
+  }
+
+  // ── 贡献面板 ──
+  // 说明：主链（灌装线/剑意/骨钉）是「和 mtc 同阶」的中性通道，单独标注、不计入占比，
+  // 否则任何时刻它都占 ~100%，面板就失去意义（AD 的数据页同理，看的是乘区构成）。
+  contribution() {
+    const b = this.bonuses();
+    const NEUTRAL = new Set(['249u1', 'bqu1', 'hgu1', 'base249', 'baseEta', 'baseSpeed']);
+    const summarize = (parts, neutralLabel) => {
+      const map = new Map();
+      for (const p of parts) {
+        if (NEUTRAL.has(p.id)) continue;
+        map.set(p.name, (map.get(p.name) || 0) + p.log);
+      }
+      const total = [...map.values()].reduce((a, v) => a + Math.abs(v), 0) || 1;
+      const rows = [...map.entries()]
+        .map(([name, log]) => ({ name, log, pct: Math.abs(log) / total }))
+        .sort((a, c) => Math.abs(c.log) - Math.abs(a.log));
+      if (neutralLabel) {
+        const mainLog = parts.filter((p) => NEUTRAL.has(p.id)).reduce((a, p) => a + p.log, 0);
+        rows.unshift({ name: neutralLabel, log: mainLog, pct: 0, neutral: true });
+      }
+      return rows;
+    };
+    return {
+      prod: summarize(b.contrib.prod, '主链（与 mtc 同阶，中性）'),
+      eta: summarize([...b.contrib.prod, ...b.contrib.eta], '主链（与 mtc 同阶，中性）'),
+      damage: summarize(b.contrib.damage, '主链（与 mtc 同阶，中性）'),
+      power: summarize(b.contrib.power),
+      prodLog: Dec.log10(b.prodTotal),
+      purifyLog: Dec.log10(b.purifyTea.add(b.dmgTotal)),
+      abyssLog: Dec.log10(this.s.S),
+    };
+  }
+}
