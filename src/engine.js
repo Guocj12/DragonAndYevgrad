@@ -889,11 +889,6 @@ export class Engine {
         s.ap = intRound(s.ap.add(ap));
         out.ap = ap;
       }
-      if (kind === 'collapse') {
-        const ppC = intFloor(Dec.mul(TUNING.ppPerGuard * 0.5 * (tier + 1), b.ppGain));
-        s.pp = intRound(s.pp.add(ppC));
-        out.pp = ppC;
-      }
       s.stats.cycles++;
       s.stats.runLog.push({ kind: 'guard', tier, t: Math.round(s.t), purify: 1 });
       if (tier >= TUNING.maxTier) {
