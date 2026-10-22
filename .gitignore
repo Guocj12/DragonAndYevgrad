@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 第三方参考源码（反物质维度 AD 项目，不随本仓库分发）
+ref/
+
+# 本地临时调试脚本
+tmp_*.mjs
+tmp_*.js
+tmp/
+
+# 测试与运行产物
+test/screens/
+test/*.log
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 存档与导出
+*.sav
+*.save
+saves/

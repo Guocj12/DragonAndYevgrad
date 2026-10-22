@@ -1,0 +1,22 @@
+{
+  "name": "dny",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "龙与耶维城 — 多层重置增量放置游戏（档 0–3 可玩版）",
+  "scripts": {
+    "start": "node server.mjs 8080",
+    "sim": "node sim/run.mjs",
+    "sim:value": "node sim/simulate.mjs value 40 0.5",
+    "probe": "node sim/probe.mjs value 300",
+    "test:ui": "node test/ui.e2e.mjs",
+    "test:play": "node test/play.e2e.mjs"
+  },
+  "dependencies": {
+    "vis-network": "^9.1.9",
+    "vue": "^2.6.14"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}
