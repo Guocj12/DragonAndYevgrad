@@ -14,7 +14,14 @@ const ok = (cond, msg) => {
   if (cond) console.log(`  ✅ ${msg}`);
   else { console.log(`  ❌ ${msg}`); problems.push(msg); }
 };
-
+// 把当前所有剧情点数完（跨条目）
+const flushStory = async (max = 40) => {
+  for (let i = 0; i < max; i++) {
+    if (!(await page.isVisible('.l-story').catch(() => false))) break;
+    await page.click('.l-story');
+    await page.waitForTimeout(120);
+  }
+};
 const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : { channel: 'chromium' });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -27,13 +34,18 @@ await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForSelector('.l-tab-bar', { timeout: 10000 });
 
-// ── 1. 开场（剧情表为空时应直接进游戏）──
-console.log('\n[1] 开场（空剧情表）');
-ok(!(await page.isVisible('.l-story')), '没有剧情时不显示剧情层');
+// ── 1. 开场剧情（5 段全屏 + 249 教学 5 段）──
+console.log('\n[1] 开场剧情');
+ok(await page.isVisible('.l-story--full'), '开场是全屏剧情层');
+ok(await page.evaluate(() => window.__dny.engine().s.paused), '播放剧情时游戏暂停');
 const t0 = await page.evaluate(() => window.__dny.engine().s.t);
-await page.waitForTimeout(700);
+await page.waitForTimeout(400);
+ok((await page.evaluate(() => window.__dny.engine().s.t)) === t0, `暂停期间 tick 不推进（t=${t0.toFixed(2)}）`);
+await flushStory();
+ok(!(await page.isVisible('.l-story')), '点完最后一段后剧情层消失');
+await page.waitForTimeout(500);
 const t1 = await page.evaluate(() => window.__dny.engine().s.t);
-ok(t1 > t0, `开局即在推进（t ${t0.toFixed(1)} → ${t1.toFixed(1)}）`);
+ok(t1 > t0, `播完后自动继续（t ${t0.toFixed(1)} → ${t1.toFixed(1)}）`);
 await page.screenshot({ path: path.join(shotDir, '30-intro-after.png') });
 
 // 条件型剧情随时插入暂停会破坏后续断言的时序，先关掉；末尾 [10] 单独测它
@@ -176,11 +188,15 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(400);
 ok(await page.evaluate(() => window.__dny.engine().s.pending === 'guard'), '进入「待净化」状态');
-ok(await page.isVisible('.c-pending-box'), '出现「净化」结算框（剧情表为空时直接弹出）');
+ok(await page.isVisible('.l-story'), '首次守护先播剧情');
+ok(await page.isVisible('.l-story--full'), '净化播报是全屏');
+await flushStory();   // 净化播报 + 耶维奇登场
+ok(await page.isVisible('.c-pending-box'), '剧情播完后出现「净化」结算框');
 await page.screenshot({ path: path.join(shotDir, '33-guard-pending.png') });
 const mpBefore = await page.evaluate(() => window.__dny.engine().s.mp.toNumber());
 await page.click('[data-action="resolve"]');
 await page.waitForTimeout(400);
+await flushStory();   // 首次净化：全屏播报 + 耶维奇登场
 const afterGuard = await page.evaluate(() => {
   const e = window.__dny.engine();
   return { tier: e.s.tier, mp: e.s.mp.toNumber(), pp: e.s.pp.toNumber(), pending: e.s.pending, paused: e.s.paused };
@@ -209,6 +225,7 @@ for (let i = 0; i < 8; i++) {
   await page.click('.l-story');
   await page.waitForTimeout(160);
 }
+await flushStory();   // 自动覆灭后可能补播未读的重开剧情
 // 自动化中枢第 1 级 = 自动覆灭：不再弹结算框，直接结算
 const autoCollapsed = await page.evaluate(() => {
   const e = window.__dny.engine();

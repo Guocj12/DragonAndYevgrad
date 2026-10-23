@@ -22,7 +22,7 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.waitForSelector('.l-tab-bar');
 
 console.log('\n[1] 开场剧情 + 点 30 次升级');
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 24; i++) {
   if (!(await page.isVisible('.l-story').catch(() => false))) break;
   await page.click('.l-story');
   await page.waitForTimeout(150);
@@ -74,6 +74,11 @@ for (let i = 0; i < 10; i++) {
 ok(await page.isVisible('.c-pending-box'), '出现净化结算框');
 await page.click('[data-action="resolve"]');
 await page.waitForTimeout(400);
+for (let i = 0; i < 30; i++) {
+  if (!(await page.isVisible('.l-story').catch(() => false))) break;
+  await page.click('.l-story');
+  await page.waitForTimeout(120);
+}
 const g = await page.evaluate(() => {
   const e = window.__dny.engine();
   return { tier: e.s.tier, mp: e.s.mp.toNumber(), paused: e.s.paused, pending: e.s.pending };
@@ -100,6 +105,11 @@ for (let i = 0; i < 10; i++) {
 }
 await page.click('[data-action="resolve"]');
 await page.waitForTimeout(400);
+for (let i = 0; i < 30; i++) {
+  if (!(await page.isVisible('.l-story').catch(() => false))) break;
+  await page.click('.l-story');
+  await page.waitForTimeout(120);
+}
 const c = await page.evaluate(() => {
   const e = window.__dny.engine();
   return { tier: e.s.tier, ups: e.s.chars['249'].upgrades.slice(), cycles: e.s.stats.cycles, paused: e.s.paused };

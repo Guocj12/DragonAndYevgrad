@@ -314,6 +314,7 @@ function buildVM() {
     message, modal,
     pending: engine.s.pending,
     paused: engine.s.paused,
+    skipReadStories: !!(engine.s.settings && engine.s.settings.skipReadStories),
   };
 }
 
@@ -379,6 +380,13 @@ function act(action, payload) {
       break;
     }
     case 'syncNow': syncNow(true); break;
+    case 'toggleSkipRead': {
+      if (!engine.s.settings) engine.s.settings = { skipReadStories: false };
+      const v = !engine.s.settings.skipReadStories;
+      engine.s.settings.skipReadStories = v;
+      say(v ? '已开启：看过的剧情不再弹出' : '已关闭：剧情照常播放');
+      break;
+    }
     case 'boardRefresh': loadBoard(); break;
     case 'setName': {
       const el = document.getElementById('name-input');
@@ -437,7 +445,17 @@ const app = new Vue({
     runTime() { return `${engine.s.t.toFixed(1)}s`; },
     playTime() { return formatTime(engine.s.stats.playTime); },
     version() { return ENGINE_VERSION; },
-    storyLine() { return this.story ? this.story.entry.lines[this.story.idx] : ''; },
+    storyLine() {
+      if (!this.story) return '';
+      const l = this.story.entry.lines[this.story.idx];
+      return typeof l === 'string' ? l : (l && l.text) || '';
+    },
+    storySpeaker() {
+      if (!this.story) return '';
+      const l = this.story.entry.lines[this.story.idx];
+      if (typeof l === 'string') return this.story.entry.speaker || '';
+      return (l && l.speaker) || '';
+    },
     storyProgress() { return this.story ? `${this.story.idx + 1} / ${this.story.entry.lines.length}` : ''; },
     pendingTitle() { return engine.s.pending === 'guard' ? '深渊已清零' : '深渊已满'; },
     pendingDesc() {
@@ -638,6 +656,11 @@ const app = new Vue({
         </template>
 
         <template v-else>
+          <div class="l-section-title">剧情</div>
+          <div class="l-options-row">
+            <button class="o-primary-btn" @click="act('toggleSkipRead')">跳过已读文本：{{ vm.skipReadStories ? '开' : '关' }}</button>
+            <span class="c-dim-note">开启后，看过的剧情不再自动弹出（没看过的照常播放）</span>
+          </div>
           <div class="l-section-title">玩家</div>
           <div class="l-options-row c-name-row">
             <span class="c-kv__k">用户名</span>
@@ -687,7 +710,7 @@ const app = new Vue({
       <div v-if="story" class="l-story" :class="story.entry.mode === 'fullscreen' ? 'l-story--full' : 'l-story--bottom'"
         @click="nextStory">
         <div v-if="story.entry.title" class="c-story-title">{{ story.entry.title }}</div>
-        <div v-if="story.entry.speaker" class="c-story-speaker">{{ story.entry.speaker }}</div>
+        <div v-if="storySpeaker" class="c-story-speaker">{{ storySpeaker }}</div>
         <div class="c-story-text">{{ storyLine }}</div>
         <div class="c-story-hint">点击继续 · {{ storyProgress }}</div>
       </div>

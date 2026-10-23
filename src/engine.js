@@ -48,6 +48,7 @@ export function createInitialState() {
     generic: {},
     stats: {
       cycles: 0, guards: 0, clears: 0, playTime: 0,
+      collapses: 0,             // 覆灭次数（守护不计入，剧情用）
       firstGuard: [false, false, false, false],
       firstCollapse: [false, false, false, false],
       tierGuards: [0, 0, 0, 0],
@@ -64,6 +65,7 @@ export function createInitialState() {
     storyQueue: [],         // 待播放剧情 id
     storySeen: [],          // 已播放过的剧情 id
     storyActive: false,     // 正在播放剧情（暂停的一种）
+    settings: { skipReadStories: false },   // 设置：跳过已读剧情
   };
   for (const id of CHARACTER_ORDER) {
     s.chars[id] = {
@@ -101,6 +103,7 @@ export function deserialize(text) {
     }
   }
   merged.stats = Object.assign(base.stats, raw.stats || {});
+  merged.settings = Object.assign({}, base.settings, raw.settings || {});
   return merged;
 }
 
@@ -546,7 +549,7 @@ export class Engine {
     }
     if (Dec.lte(s.S, 0)) {
       this.enterPending('guard');
-      if (b.autoGuard) { s.storyQueue.length = 0; this.resolvePending(); return null; }
+      if (b.autoGuard) { s.storyQueue.length = 0; this.resolvePending(true); return null; }
       return 'guard';
     }
     const p = Math.max(0, Math.min(1, 1 - Dec.log10(s.S) / Math.max(1, b.ctx.y0)));
@@ -570,7 +573,7 @@ export class Engine {
     // 4. 边界判定
     if (Dec.gte(s.S, tierCap(s.tier))) {
       this.enterPending('collapse');
-      if (b.autoTech) { s.storyQueue.length = 0; this.resolvePending(); return null; }
+      if (b.autoTech) { s.storyQueue.length = 0; this.resolvePending(true); return null; }
       return 'collapse';
     }
 
@@ -588,7 +591,7 @@ export class Engine {
     while (left > 1e-9 && !this.s.won) {
       // 离线：剧情不逐段播，待结算自动点掉，保证挂机能继续推进
       while (this.s.storyQueue.length) this.finishStory();
-      if (this.s.pending) this.resolvePending();
+      if (this.s.pending) this.resolvePending(true);
       if (this.s.pending) break;
       const step = Math.min(dt, left);
       this.tick(step);
@@ -868,7 +871,8 @@ export class Engine {
   }
 
   // 玩家点「净化 / 覆灭」按钮：结算资源、推进档位、恢复进行
-  resolvePending() {
+  // auto = true 表示自动化中枢代为结算：重开剧情只弹没看过的
+  resolvePending(auto = false) {
     const s = this.s;
     const kind = s.pending;
     if (!kind) return null;
@@ -914,6 +918,7 @@ export class Engine {
       }
     } else {
       s.stats.cycles++;
+      s.stats.collapses++;
       s.stats.tierCollapses[tier]++;
       if (!s.stats.firstCollapse[tier]) {
         s.stats.firstCollapse[tier] = true;
@@ -926,6 +931,7 @@ export class Engine {
       s.tier = 0;
       out.nextTier = 0;
       this.startRun(0, true);
+      this.enqueueRestart(auto);   // 回到店里：开场与 249 的教学
     }
 
     s.pending = null;
@@ -984,19 +990,49 @@ export class Engine {
     }
   }
 
+  // 条目是否允许播：未标 repeat 的只播一次；repeat 条目每次触发都播，
+  // 但玩家开启「跳过已读文本」后，已读的 repeat 条目不再弹出。
+  canPlayStory(entry) {
+    const s = this.s;
+    const seen = s.storySeen.includes(entry.id);
+    if (!seen) return true;
+    if (!entry.repeat) return false;
+    return !s.settings.skipReadStories;
+  }
+
+  pushStory(entry) {
+    const s = this.s;
+    s.storyQueue.push(entry.id);
+    if (!s.storySeen.includes(entry.id)) s.storySeen.push(entry.id);
+    s.paused = true;
+  }
+
   enqueueStory(event) {
     const s = this.s;
     const tier = s.tier;
     const countOf = (ev) => (ev === 'guard' ? s.stats.tierGuards[tier] + 1 : s.stats.tierCollapses[tier] + 1);
     for (const entry of STORY) {
-      if (s.storySeen.includes(entry.id)) continue;
-      if (entry.trigger.type !== event) continue;
-      if (entry.trigger.tier !== undefined && entry.trigger.tier !== tier) continue;
-      if (entry.trigger.count !== undefined && entry.trigger.count !== countOf(event)) continue;
-      s.storyQueue.push(entry.id);
-      s.storySeen.push(entry.id);
+      const t = entry.trigger;
+      if (t.type !== event) continue;
+      if (t.tier !== undefined && t.tier !== tier) continue;
+      if (t.count !== undefined && t.count !== countOf(event)) continue;
+      if (!this.canPlayStory(entry)) continue;
+      this.pushStory(entry);
     }
-    if (s.storyQueue.length) { s.paused = true; }
+  }
+
+  // 进店 / 覆灭后重开：播「restart」类剧情
+  // auto = true（自动化中枢自动结算）时，已读的一律不弹，免得挂机被开场刷屏
+  enqueueRestart(auto = false) {
+    const s = this.s;
+    for (const entry of STORY) {
+      const t = entry.trigger;
+      if (t.type !== 'restart') continue;
+      if (t.count !== undefined && t.count !== (s.stats.collapses || 0)) continue;
+      if (auto && s.storySeen.includes(entry.id)) continue;
+      if (!this.canPlayStory(entry)) continue;
+      this.pushStory(entry);
+    }
   }
 
   nextStory() {
@@ -1017,14 +1053,9 @@ export class Engine {
   }
 
   startStoryIfFirstRun() {
+    this.enqueueRestart();
     const s = this.s;
-    for (const entry of STORY) {
-      if (entry.trigger.type !== 'firstRun') continue;
-      if (s.storySeen.includes(entry.id)) continue;
-      s.storyQueue.push(entry.id);
-      s.storySeen.push(entry.id);
-    }
-    if (s.storyQueue.length) { s.paused = true; s.storyActive = true; }
+    if (s.storyQueue.length) { s.storyActive = true; }
   }
 
   togglePause(force) {
