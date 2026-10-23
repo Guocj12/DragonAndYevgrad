@@ -2,8 +2,8 @@
 // 每角色 8 升级 + 4 科技 + 9 科技树节点；通用树 13 节点（1 中心 + 4 主干 + 8 叶子）。
 //
 // 数值结构：
-//   主链（灌装线 / 剑意 / 骨钉）产量 ×2 每级、不封顶；其余升级 10 级封顶，每级一个固定倍率。
-//   解锁链 REQ_LEVELS：前一个升级买满 10 级才开下一个；基础价 2^(10×序号)。
+//   所有升级都没有等级上限（只受奶茶币增速限制）；主链（灌装线 / 剑意 / 骨钉）每级 ×2，其余每级一个固定倍率。
+//   解锁链 REQ_LEVELS：前一个升级买到 10/20/…/70 级才开下一个；所有升级基础价统一为 1。
 //   MP / PP / AP 一律整数。
 // 描述风格照 AD：短句 + 数字，写成「产量 ×2/级」「覆灭 MP ×(1 + 0.1 × 等级 × 本轮分钟数)」这种。
 
@@ -30,7 +30,7 @@ export const TUNING = {
   autoBuyIntervalMult: 0.95,
   autoBuyMinInterval: 0.05,
   autoBuyMaxLevel: 67,
-  memoryBase: envNum('DNY_MB', 1.006),
+  memoryBase: envNum('DNY_MB', 1.45),
   alphaCap: envNum('DNY_ALPHA', 0.5),
   bulkGroup: 10,
   groupCostMult: 1,
@@ -40,10 +40,15 @@ const d = (x) => (x instanceof Dec ? x : Dec.from(x));
 const pow = (base, l) => Dec.pow(base, l);
 export const costOf = (base, mult, level) => Dec.mul(d(base), pow(mult, level));
 
-export const UP_CAP = 10;
-export const REQ_LEVELS = [0, UP_CAP, UP_CAP, UP_CAP, UP_CAP, UP_CAP, UP_CAP, UP_CAP];
-const upBase = (i) => pow(2, 10 * i);
-const upCost = (i) => (l) => Dec.mul(upBase(i), pow(2, l));
+// 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
+export const REQ_LEVELS = [0, 10, 20, 30, 40, 50, 60, 70];
+const upBase = () => Dec.one();
+// 成本倍率：主链（第 0 项）每级 ×2，与自身 ×2 的效果同阶；其余每级 ×4，
+// 保证「等级无限、但性价比低于主链」，否则 8 项同阶增长会把产量推成超临界。
+// 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9
+export const UP_COST_MULT = (i) => i + 2;
+const upCostMult = (i) => UP_COST_MULT(i);
+const upCost = (i) => (l) => Dec.mul(upBase(i), pow(upCostMult(i), l));
 
 // ─────────────────────────────────────────────
 // 249
@@ -55,15 +60,15 @@ const C249 = {
   angle: 90,
   unlockTier: 0,
   blurb: '不会记得每次轮回，数据库里却有每一轮的记录。',
-  upgrades: [
-    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), maxLevel: Infinity, desc: () => '产量 ×2/级。', mul: (l) => pow(2, l) },
-    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), maxLevel: UP_CAP, desc: () => '产量 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), maxLevel: UP_CAP, desc: () => '净化效率 ×1.15/级（10 级上限）。', mul: (l) => pow(1.15, l) },
-    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), maxLevel: UP_CAP, desc: () => '生产速度 ×1.03/级（10 级上限）。', mul: (l) => pow(1.03, l) },
-    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), maxLevel: UP_CAP, desc: () => '产量 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), maxLevel: UP_CAP, desc: () => '净化效率 ×1.15/级（10 级上限）。', mul: (l) => pow(1.15, l) },
-    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), maxLevel: UP_CAP, desc: () => '产量 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: '249u8', name: '产线总控', kind: 'prod', cost: upCost(7), maxLevel: UP_CAP, desc: () => '产量 ×1.15/级（10 级上限）。', mul: (l) => pow(1.15, l) },
+    upgrades: [
+    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×1.09/级。', mul: (l) => pow(2, l / 8) },
+    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×1.15/级。', mul: (l) => pow(3, l / 8) },
+    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '净化效率 ×1.19/级。', mul: (l) => pow(4, l / 8) },
+    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '生产速度 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), desc: () => '产量 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), desc: () => '净化效率 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), desc: () => '产量 ×1.30/级。', mul: (l) => pow(8, l / 8) },
+    { id: '249u8', name: '产线总控', kind: 'prod', cost: upCost(7), desc: () => '产量 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: '249t1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -98,15 +103,15 @@ const YEWEI = {
   angle: 45,
   unlockTier: 1,
   blurb: '可以独立生产奶茶，也会为其他角色提供强力辅助。',
-  upgrades: [
-    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), maxLevel: Infinity, desc: () => '独立产线 = 249 产量的 4%/级，上限 50%。', share: (l) => Math.min(0.5, 0.04 * l) },
-    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), maxLevel: UP_CAP, desc: () => '全体产量 ×1.05/级（10 级上限）。', mul: (l) => pow(1.05, l) },
-    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), maxLevel: UP_CAP, desc: () => '独立产线 ×1.08/级（10 级上限）。', mul: (l) => pow(1.08, l) },
-    { id: 'ywu4', name: '共生', kind: 'line', cost: upCost(3), maxLevel: UP_CAP, desc: () => '独立产线 ×1.06/级（10 级上限）。', mul: (l) => pow(1.06, l) },
-    { id: 'ywu5', name: '反哺', kind: 'prod249', cost: upCost(4), maxLevel: UP_CAP, desc: () => '249 产量 ×1.06/级（10 级上限）。', mul: (l) => pow(1.06, l) },
-    { id: 'ywu6', name: '万事通', kind: 'powerAll', cost: upCost(5), maxLevel: UP_CAP, desc: () => '全体战力 ×1.06/级（10 级上限）。', mul: (l) => pow(1.06, l) },
-    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), maxLevel: UP_CAP, desc: () => '独立产线 ×1.05/级（10 级上限）。', mul: (l) => pow(1.05, l) },
-    { id: 'ywu8', name: '分店', kind: 'line', cost: upCost(7), maxLevel: UP_CAP, desc: () => '独立产线 ×1.08/级（10 级上限）。', mul: (l) => pow(1.08, l) },
+    upgrades: [
+    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '独立产线 ×1.09/级。', mul: (l) => pow(2, l / 8) },
+    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '全体产量 ×1.15/级。', mul: (l) => pow(3, l / 8) },
+    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '独立产线 ×1.19/级。', mul: (l) => pow(4, l / 8) },
+    { id: 'ywu4', name: '共生', kind: 'line', cost: upCost(3), desc: () => '独立产线 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: 'ywu5', name: '反哺', kind: 'prod249', cost: upCost(4), desc: () => '249 产量 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: 'ywu6', name: '万事通', kind: 'powerAll', cost: upCost(5), desc: () => '全体战力 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '独立产线 ×1.30/级。', mul: (l) => pow(8, l / 8) },
+    { id: 'ywu8', name: '分店', kind: 'line', cost: upCost(7), desc: () => '独立产线 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'ywt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -141,16 +146,15 @@ const BAIQI = {
   angle: 0,
   unlockTier: 2,
   blurb: '使用重剑，每秒对深渊造成一次伤害。龙的血脉不自知。',
-  upgrades: [
-    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), maxLevel: Infinity, desc: () => '战力 ×2/级。', rate: (l) => pow(2, l) },
-    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), maxLevel: UP_CAP, desc: () => '战力 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), maxLevel: UP_CAP, desc: () => '对深渊伤害 ×1.12/级（10 级上限）。', mul: (l) => pow(1.12, l) },
-    { id: 'bqu4', name: '暴击', kind: 'critRate', cost: upCost(3), maxLevel: UP_CAP, desc: () => '暴击率 +12%/级，上限 100%。', critRate: (l) => Math.min(1, 0.12 * l) },
-    { id: 'bqu5', name: '逆鳞', kind: 'critDmg', cost: upCost(4), maxLevel: UP_CAP, desc: () => '暴击伤害 +50%/级（10 级上限）。', critDmg: (l) => 0.5 * l },
-    { id: 'bqu6', name: '真龙', kind: 'dragon', cost: upCost(5), maxLevel: UP_CAP,
-      desc: (l) => `真龙冷却 ×0.95/级，当前 ${(60 * Math.pow(0.95, l)).toFixed(1)} 秒。`, cooldown: (l) => 60 * Math.pow(0.95, l) },
-    { id: 'bqu7', name: '真龙强化', kind: 'dragonPower', cost: upCost(6), maxLevel: UP_CAP, desc: () => '真龙每层强度 +30%/级。', dragonMul: (l) => 1 + 0.3 * l },
-    { id: 'bqu8', name: '剑心', kind: 'powerRate', cost: upCost(7), maxLevel: UP_CAP, desc: () => '剑意增长 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
+    upgrades: [
+    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '剑意增长 ×1.09/级。', rate: (l) => pow(2, l / 8) },
+    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '战力 ×1.15/级。', mul: (l) => pow(3, l / 8) },
+    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '对深渊伤害 ×1.19/级。', mul: (l) => pow(4, l / 8) },
+    { id: 'bqu4', name: '暴击', kind: 'damage', cost: upCost(3), desc: () => '伤害 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: 'bqu5', name: '逆鳞', kind: 'damage', cost: upCost(4), desc: () => '伤害 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: 'bqu6', name: '真龙', kind: 'damage', cost: upCost(5), desc: () => '伤害 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'bqu7', name: '真龙强化', kind: 'damage', cost: upCost(6), desc: () => '伤害 ×1.30/级。', mul: (l) => pow(8, l / 8) },
+    { id: 'bqu8', name: '剑心', kind: 'powerRate', cost: upCost(7), desc: () => '剑意增长 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'bqt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -185,15 +189,15 @@ const HENG = {
   angle: -45,
   unlockTier: 3,
   blurb: '力量与深渊同源：深渊越强，他越强。',
-  upgrades: [
-    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), maxLevel: Infinity, desc: () => '战力 ×2/级。', mul: (l) => pow(2, l) },
-    { id: 'hgu2', name: '同源', kind: 'alpha', cost: upCost(1), maxLevel: UP_CAP, desc: () => 'α +0.08/级，上限 0.5。', add: (l) => Math.min(0.5, 0.08 * l) },
-    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), maxLevel: UP_CAP, desc: () => '攻速 ×1.08/级（10 级上限）。', mul: (l) => pow(1.08, l) },
-    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), maxLevel: UP_CAP, desc: () => '伤害 ×1.12/级（10 级上限）。', mul: (l) => pow(1.12, l) },
-    { id: 'hgu5', name: '深渊共鸣', kind: 'alpha', cost: upCost(4), maxLevel: UP_CAP, desc: () => 'α ×1.04/级（10 级上限）。', mul: (l) => pow(1.04, l) },
-    { id: 'hgu6', name: '战力核心', kind: 'power', cost: upCost(5), maxLevel: UP_CAP, desc: () => '战力 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), maxLevel: UP_CAP, desc: () => '攻速 ×1.10/级（10 级上限）。', mul: (l) => pow(1.10, l) },
-    { id: 'hgu8', name: '同源核心', kind: 'alpha', cost: upCost(7), maxLevel: UP_CAP, desc: () => 'α ×1.05/级（10 级上限）。', mul: (l) => pow(1.05, l) },
+    upgrades: [
+    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '战力 ×1.09/级。', mul: (l) => pow(2, l / 8) },
+    { id: 'hgu2', name: '同源', kind: 'power', cost: upCost(1), desc: () => '战力 ×1.15/级。', mul: (l) => pow(3, l / 8) },
+    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '攻速 ×1.19/级。', mul: (l) => pow(4, l / 8) },
+    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '伤害 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '战力 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: 'hgu6', name: '战力核心', kind: 'power', cost: upCost(5), desc: () => '战力 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '攻速 ×1.30/级。', mul: (l) => pow(8, l / 8) },
+    { id: 'hgu8', name: '同源核心', kind: 'damage', cost: upCost(7), desc: () => '伤害 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'hgt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -266,7 +270,7 @@ export const CHARACTERS = { '249': C249, yewei: YEWEI, baiqi: BAIQI, heng: HENG 
 export const CHARACTER_ORDER = ['249', 'yewei', 'baiqi', 'heng'];
 
 for (const c of Object.values(CHARACTERS)) {
-  c.upgrades.forEach((u, i) => { u.reqLevel = REQ_LEVELS[i] || 0; u.maxLevel = u.maxLevel || UP_CAP; });
+  c.upgrades.forEach((u, i) => { u.reqLevel = REQ_LEVELS[i] || 0; u.maxLevel = u.maxLevel ?? Infinity; u.costMult = upCostMult(i); });
   c.techs.forEach((t) => { if (!t.maxLevel) t.maxLevel = 20; });
 }
 

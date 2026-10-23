@@ -191,7 +191,7 @@ function upgradeListVM(charId) {
     const unlocked = engine.upgradeUnlocked(charId, i);
     const cost = engine.costOfUpgrade(charId, i, lv);
     const prevName = i > 0 ? CHARACTERS[charId].upgrades[i - 1].name : '';
-    const maxLevel = u.maxLevel || 10;
+    const maxLevel = u.maxLevel ?? Infinity;
     const maxed = lv >= maxLevel;
     const bulk = engine.bulkInfo(charId, i, TUNING.bulkGroup);
     return {
@@ -328,7 +328,7 @@ function doBuy(charId, idx) {
       say(`「${def.name}」尚未解锁：需要「${prev.name}」Lv${def.reqLevel}`);
     } else {
       const u = CHARACTERS[charId].upgrades[idx];
-      if (engine.s.chars[charId].upgrades[idx] >= (u.maxLevel || 10)) say('已经满级了');
+      if (engine.s.chars[charId].upgrades[idx] >= (u.maxLevel ?? Infinity)) say('已经满级了');
       else say('mtc 还不够买下一级');
     }
   }

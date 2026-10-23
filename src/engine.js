@@ -302,7 +302,8 @@ export class Engine {
       const c = s.chars.yewei;
       const def = CHARACTERS.yewei;
       const l1 = c.upgrades[0];
-      if (l1 > 0) line.addBase(prod249Base.mul(0.004 * l1));
+      line.addBase(prod249Base.mul(0.004));
+      if (l1 > 0) line.mul(def.upgrades[0].mul(l1, ctx), def.upgrades[0].id, def.upgrades[0].name);
       for (let i = 1; i < def.upgrades.length; i++) {
         const u = def.upgrades[i];
         const lv = c.upgrades[i];
@@ -620,7 +621,7 @@ export class Engine {
     let total = Dec.zero();
     let n = 0;
     if (!this.upgradeUnlocked(charId, idx)) return { count: 0, total, level: lv, target: lv };
-    const cap0 = CHARACTERS[charId].upgrades[idx].maxLevel || 10;
+    const cap0 = CHARACTERS[charId].upgrades[idx].maxLevel ?? Infinity;
     const target = Math.min(cap0, (Math.floor(lv / TUNING.bulkGroup) + 1) * TUNING.bulkGroup);
     const maxAdd = Math.max(0, target - lv);
     while (n < maxAdd) {
@@ -703,7 +704,7 @@ export class Engine {
     const def = CHARACTERS[charId].upgrades[idx];
     if (!this.upgradeUnlocked(charId, idx)) return 0;
     let bought = 0;
-    const maxLevel = def.maxLevel || 10;
+    const maxLevel = def.maxLevel ?? Infinity;
     for (let i = 0; i < howMany; i++) {
       const lv = c.upgrades[idx];
       if (lv >= maxLevel) break;

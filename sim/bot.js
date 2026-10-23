@@ -31,7 +31,7 @@ function buyLoop(engine, mode) {
     for (let i = 0; i < defs.length; i++) {
       const def = defs[i];
       const lv = c.upgrades[i];
-      const maxLv = def.maxLevel || 10;
+      const maxLv = def.maxLevel ?? Infinity;
       if (lv >= maxLv) continue;
       const cost = engine.costOfUpgrade(id, i, lv);
       const cl = Math.max(0.001, lg(cost));
@@ -49,16 +49,16 @@ function buyLoop(engine, mode) {
   for (const item of list) {
     const c = s.chars[item.id];
     let lv = c.upgrades[item.i];
-    // 级数估算：成本每级 ×2（数据表统一），可买级数 = (budget - log10(cost))/log10(2)
-    const perLevel = Math.log10(2);
+    // 级数估算：成本每级 ×costMult（主链 2、其余 4），可买级数 = (budget - log10(cost))/log10(costMult)
+    const ratio = item.def.costMult || 2;
+    const perLevel = Math.log10(ratio);
     let k = Math.floor((budget - lg(engine.costOfUpgrade(item.id, item.i, lv))) / perLevel);
     if (!(k > 0)) continue;
-    const maxLv = item.def.maxLevel || 10;
+    const maxLv = item.def.maxLevel ?? Infinity;
     k = Math.min(k, 2000, maxLv - lv);
     if (!(k > 0)) continue;
     // 实际扣费按精确成本逐级（最多 2000 级，成本可用几何级数一次算完）
     const first = engine.costOfUpgrade(item.id, item.i, lv);
-    const ratio = 2;
     // 等比数列求和：first * (2^k - 1)
     const total = first.mul(Dec.pow(ratio, k).sub(1));
     if (Dec.gt(total, s.mtc)) { k = Math.max(1, Math.floor(k / 2)); }
