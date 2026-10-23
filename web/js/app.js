@@ -9,6 +9,113 @@ import { CHARACTERS, CHARACTER_ORDER, TUNING } from '../../src/db.js';
 import { TreeView } from './tree.js';
 
 const SAVE_KEY = 'dny-save-v1';
+const SYNC_MS = 60000;   // 每分钟自动上传一次（存档 + 排行榜指标）
+
+// 服务器身份与存档：cookie 由服务端下发，前端不碰
+const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };
+let boardRows = [];
+let boardNote = '';
+
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function bootstrapServer() {
+  const me = await apiFetch('/api/me');
+  if (!me.ok || !me.data) { NET.note = '离线（服务器不可用），进度只存本地'; return; }
+  NET.name = me.data.name;
+  NET.rev = me.data.rev;
+  NET.hasSave = me.data.hasSave;
+  NET.online = true;
+  if (me.data.hasSave) {
+    const saved = await apiFetch('/api/save');
+    if (saved.ok && saved.data && saved.data.save) {
+      try {
+        engine = new Engine(deserialize(saved.data.save));
+        NET.rev = saved.data.rev;
+        const elapsed = Math.min(8 * 3600, Math.max(0, (Date.now() - (saved.data.updatedAt || Date.now())) / 1000));
+        if (elapsed > 5 && !engine.s.pending) {
+          engine.offlineMult = (engine.s.generic['g4'] || 0) > 0 ? 0.25 : 1;
+          engine.advance(elapsed);
+          engine.offlineMult = 1;
+        }
+        NET.note = '已从服务器载入';
+        saveGame();
+        app.render();
+      } catch (e) {
+        NET.note = '服务器存档损坏，使用本地存档';
+      }
+    }
+  }
+}
+
+function metricsNow() {
+  const st = engine.s.stats;
+  return {
+    tier: st.maxTier || 0,
+    purified: Number.isFinite(st.purifiedLog) ? st.purifiedLog : 0,
+    cycles: st.cycles || 0,
+    guards: (st.tierGuards || []).reduce((x, y) => x + y, 0),
+    playTime: Math.round(st.playTime || 0),
+    won: !!engine.s.won,
+    cleared: st.clears || 0,
+  };
+}
+
+let syncing = false;
+async function syncNow(manual = false) {
+  if (syncing) return;
+  if (!NET.online) {
+    const me = await apiFetch('/api/me');
+    if (!me.ok) { NET.note = manual ? '服务器不可用' : NET.note; return; }
+    NET.online = true;
+    NET.name = me.data.name;
+    NET.rev = me.data.rev;
+  }
+  syncing = true;
+  try {
+    const save = serialize(engine.s);
+    let put = await apiFetch('/api/save', { method: 'PUT', body: JSON.stringify({ rev: NET.rev, save }) });
+    if (put.status === 409) {
+      NET.rev = put.data && typeof put.data.rev === 'number' ? put.data.rev : NET.rev + 1;
+      put = await apiFetch('/api/save', { method: 'PUT', body: JSON.stringify({ rev: NET.rev, save }) });
+    }
+    if (put.ok) NET.rev = put.data.rev;
+    await apiFetch('/api/board', { method: 'POST', body: JSON.stringify({ metrics: metricsNow() }) });
+    NET.syncedAt = Date.now();
+    NET.note = '已同步';
+  } catch (e) {
+    NET.note = '同步失败（下次重试）';
+  } finally {
+    syncing = false;
+    if (manual) app.render();
+  }
+}
+
+async function loadBoard() {
+  const r = await apiFetch('/api/board?limit=50');
+  if (r.ok && r.data && Array.isArray(r.data.rows)) {
+    boardRows = r.data.rows;
+    boardNote = boardRows.length ? '' : '还没有人上传成绩，玩一会儿再来看。';
+  } else {
+    boardNote = '排行榜拉取失败（服务器不可用？）';
+  }
+  app.render();
+}
+
+async function renameSelf(name) {
+  const r = await apiFetch('/api/name', { method: 'POST', body: JSON.stringify({ name }) });
+  if (r.ok) { NET.name = r.data.name; NET.note = '用户名已更新'; say(`用户名改为「${r.data.name}」`); }
+  else NET.note = (r.data && r.data.error) || '改名失败';
+  app.render();
+}
 const fmt = (v) => formatScientific(v);
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
@@ -53,6 +160,7 @@ const TAB_DEFS = () => {
   const tabs = CHARACTER_ORDER.filter((id) => engine.s.unlocked.includes(id))
     .map((id) => ({ id, name: CHARACTERS[id].name, kind: 'char' }));
   tabs.push({ id: 'tree', name: '科技树', kind: 'tree' });
+  tabs.push({ id: 'board', name: '排行榜', kind: 'board' });
   tabs.push({ id: 'stats', name: '数据', kind: 'stats' });
   tabs.push({ id: 'options', name: '设置', kind: 'options' });
   return tabs;
@@ -166,9 +274,33 @@ function treeSummaryVM() {
 function buildVM() {
   const page = { kind: 'char', charId: activeTab, sub: activeSub };
   const body = {};
-  if (activeTab === 'tree') { page.kind = 'tree'; body.treeStat = treeSummaryVM(); }
+  if (activeTab === 'board') {
+    page.kind = 'board';
+    body.board = {
+      rows: boardRows.map((r, i) => ({
+        rank: i + 1,
+        name: r.name,
+        tierText: `档 ${r.tier}`,
+        purifiedText: r.purified > 0 ? fmt(Dec.pow10(r.purified)) : '—',
+        cycles: r.cycles,
+        guards: r.guards,
+        timeText: formatTime(r.playTime),
+        won: r.won,
+      })),
+      note: boardNote,
+      myName: NET.name,
+    };
+  } else if (activeTab === 'tree') { page.kind = 'tree'; body.treeStat = treeSummaryVM(); }
   else if (activeTab === 'stats') { page.kind = 'stats'; Object.assign(body, statsVM()); }
-  else if (activeTab === 'options') { page.kind = 'options'; }
+  else if (activeTab === 'options') {
+    page.kind = 'options';
+    body.net = {
+      name: NET.name || '（连接中）',
+      online: NET.online,
+      note: NET.note,
+      lastSync: NET.syncedAt ? formatTime((Date.now() - NET.syncedAt) / 1000) + '前' : '还没同步过',
+    };
+  }
   else {
     if (!engine.s.unlocked.includes(activeTab)) activeTab = '249';
     page.charId = activeTab;
@@ -203,7 +335,10 @@ function doBuy(charId, idx) {
 
 function act(action, payload) {
   switch (action) {
-    case 'tab': activeTab = payload; break;
+    case 'tab':
+      activeTab = payload;
+      if (payload === 'board') loadBoard();
+      break;
     case 'sub': activeSub = payload; break;
     case 'upgrade': doBuy(payload.charId, payload.index); break;
     case 'tech': engine.buyTech(payload.charId, payload.index); break;
@@ -241,6 +376,13 @@ function act(action, payload) {
           ? `净化完成：上限 +1 档（当前档 ${out.nextTier}），${parts.join('，')}`
           : `覆灭结算：回到档 0，${parts.join('，')}`);
       }
+      break;
+    }
+    case 'syncNow': syncNow(true); break;
+    case 'boardRefresh': loadBoard(); break;
+    case 'setName': {
+      const el = document.getElementById('name-input');
+      if (el && el.value.trim()) renameSelf(el.value.trim());
       break;
     }
     case 'save': saveGame(); say('已保存'); break;
@@ -442,6 +584,32 @@ const app = new Vue({
           </div>
         </template>
 
+        <template v-else-if="vm.page.kind === 'board'">
+          <div class="l-section-title">
+            排行榜
+            <span class="c-dim-note">按「最高档 → 净化深渊总量 → 覆灭次数」排序，每分钟自动上传</span>
+            <button class="o-primary-btn c-board-refresh" @click="act('boardRefresh')">刷新</button>
+          </div>
+          <div v-if="vm.body.board.note" class="c-dim-note c-board-note">{{ vm.body.board.note }}</div>
+          <table class="c-stats-table c-board-table" v-if="vm.body.board.rows.length">
+            <thead>
+              <tr><th>#</th><th>玩家</th><th>最高档</th><th>净化深渊总量</th><th>守护</th><th>覆灭</th><th>累计游玩</th><th>通关</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in vm.body.board.rows" :key="'b'+r.rank" :class="{ 'c-board-me': r.name === vm.body.board.myName }">
+                <td>{{ r.rank }}</td>
+                <td>{{ r.name }}<span v-if="r.name === vm.body.board.myName" class="c-board-tag">你</span></td>
+                <td>{{ r.tierText }}</td>
+                <td>{{ r.purifiedText }}</td>
+                <td>{{ r.guards }}</td>
+                <td>{{ r.cycles }}</td>
+                <td>{{ r.timeText }}</td>
+                <td>{{ r.won ? '✓' : '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+
         <template v-else-if="vm.page.kind === 'stats'">
           <div class="l-section-title">本轮总览</div>
           <div class="c-kv">
@@ -470,6 +638,22 @@ const app = new Vue({
         </template>
 
         <template v-else>
+          <div class="l-section-title">玩家</div>
+          <div class="l-options-row c-name-row">
+            <span class="c-kv__k">用户名</span>
+            <input id="name-input" class="o-input c-name-input" maxlength="16" :value="vm.body.net.name" placeholder="2–16 个字符" />
+            <button class="o-primary-btn" @click="act('setName')">改名</button>
+            <span class="c-dim-note">这个名字会显示在排行榜上，存档按浏览器独立</span>
+          </div>
+          <div class="c-kv">
+            <div><span class="c-kv__k">服务器</span> <span class="c-kv__v">{{ vm.body.net.online ? '已连接（存档每分钟上传）' : '离线（进度只存本地）' }}</span></div>
+            <div><span class="c-kv__k">上次同步</span> <span class="c-kv__v">{{ vm.body.net.lastSync }}</span></div>
+            <div><span class="c-kv__k">同步状态</span> <span class="c-kv__v">{{ vm.body.net.note }}</span></div>
+          </div>
+          <div class="l-options-row">
+            <button class="o-primary-btn" @click="act('syncNow')">立即同步</button>
+          </div>
+
           <div class="l-section-title">存档</div>
           <div class="l-options-row">
             <button class="o-primary-btn" @click="act('save')">立即保存</button>
@@ -502,6 +686,8 @@ const app = new Vue({
 
       <div v-if="story" class="l-story" :class="story.entry.mode === 'fullscreen' ? 'l-story--full' : 'l-story--bottom'"
         @click="nextStory">
+        <div v-if="story.entry.title" class="c-story-title">{{ story.entry.title }}</div>
+        <div v-if="story.entry.speaker" class="c-story-speaker">{{ story.entry.speaker }}</div>
         <div class="c-story-text">{{ storyLine }}</div>
         <div class="c-story-hint">点击继续 · {{ storyProgress }}</div>
       </div>
@@ -563,6 +749,11 @@ if (!loadGame()) {
 app.render();
 requestAnimationFrame(frame);
 window.addEventListener('beforeunload', saveGame);
+bootstrapServer();
+setInterval(() => { syncNow(); }, SYNC_MS);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { saveGame(); syncNow(); }
+});
 window.__dny = {
   engine: () => engine,
   app,
@@ -577,6 +768,13 @@ window.__dny = {
     app.render();
   },
   tree: () => treeView,
+  // 临时播一条剧情（不写存档、不进 STORY 表），用于前端巡检与调试
+  playStory(entry) {
+    engine.s.paused = true;
+    engine.s.storyActive = true;
+    app.story = { entry, idx: 0 };
+    app.render();
+  },
   unlock(id) {
     if (!engine.s.unlocked.includes(id)) engine.s.unlocked.push(id);
     app.render();

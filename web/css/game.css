@@ -63,6 +63,7 @@ body {
   padding: 0.3rem 1rem;
   border: var(--var-border-width, 0.2rem) solid var(--color-good);
   border-radius: var(--var-border-radius, 0.5rem);
+  white-space: nowrap;
 }
 
 /* ── 深渊条 ── */
@@ -530,6 +531,33 @@ body {
   white-space: pre-wrap;
 }
 
+/* 全屏剧情：顶部章节名 */
+.c-story-title {
+  position: absolute;
+  top: 3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.2rem;
+  letter-spacing: 0.28rem;
+  color: #7a7a7a;
+  text-indent: 0.28rem;
+}
+
+/* 底部剧情：左上角说话人（角色名） */
+.c-story-speaker {
+  position: absolute;
+  left: 3rem;
+  top: 1.6rem;
+  font-size: 1.5rem;
+  letter-spacing: 0.1rem;
+  color: #ffcf6b;
+}
+
+@media screen and (max-width: 600px) {
+  .c-story-speaker { left: 1.4rem; top: 1rem; font-size: 1.3rem; }
+  .c-story-title { top: 1.6rem; font-size: 1rem; letter-spacing: 0.4rem; }
+}
+
 .c-story-hint {
   position: absolute;
   right: 2rem;
@@ -566,3 +594,44 @@ body {
 .c-pending-desc { font-size: 1.3rem; opacity: 0.85; }
 .c-pending-reward { font-size: 1.3rem; color: var(--color-good); }
 .c-pending-btn { min-width: 18rem; height: 4rem; font-size: 1.8rem; }
+
+/* ── 排行榜 / 用户名 ── */
+.c-board-table {
+  margin-top: 0.8rem;
+}
+.c-board-table td,
+.c-board-table th {
+  font-size: 1.5rem;
+  padding: 0.5rem 1.2rem;
+}
+.c-board-me {
+  background: rgba(178, 65, 227, 0.16);
+}
+.c-board-tag {
+  margin-left: 0.6rem;
+  font-size: 1.1rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--color-accent, #b241e3);
+  color: #fff;
+}
+.c-board-refresh {
+  margin-left: 1rem;
+  font-size: 1.2rem;
+}
+.c-board-note {
+  margin-top: 0.6rem;
+}
+.c-name-row {
+  align-items: center;
+  gap: 1rem;
+}
+.c-name-input {
+  width: 22rem;
+  font-size: 1.5rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-accent, #b241e3);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+}

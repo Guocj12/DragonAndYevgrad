@@ -52,6 +52,8 @@ export function createInitialState() {
       firstCollapse: [false, false, false, false],
       tierGuards: [0, 0, 0, 0],
       tierCollapses: [0, 0, 0, 0],
+      purifiedLog: -Infinity,   // 累计净化的深渊总量（log10）
+      maxTier: 0,               // 到达过的最高档
       runLog: [],
     },
     unlocked: ['249'],
@@ -172,6 +174,7 @@ export class Engine {
     this.baiqiPowerTree = 0;
     this.abyssRateMult = 1;
     this.offlineMult = 1;   // 离线时深渊增速倍率
+    this.storyConditions = true;   // 条件型剧情轮询开关（自动化测试可关掉，事件型不受影响）
   }
 
   get state() { return this.s; }
@@ -574,6 +577,8 @@ export class Engine {
     // 5. 自动购买
     this.runAutobuyers(dt);
     this.runAutoTrunks(dt);
+    // 6. 条件型剧情（每 0.5 秒轮询，一次只推一条）
+    this.checkStoryConditions(dt);
     return null;
   }
 
@@ -880,6 +885,12 @@ export class Engine {
     if (kind === 'guard') {
       s.stats.guards++;
       s.stats.tierGuards[tier]++;
+      {
+        const add = tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0));
+        const a = s.stats.purifiedLog;
+        s.stats.purifiedLog = !isFinite(a) ? add : Math.max(a, add) + Math.log10(1 + Math.pow(10, Math.min(a, add) - Math.max(a, add)));
+      }
+      if (tier > s.stats.maxTier) s.stats.maxTier = tier;
       const pp = intFloor(Dec.mul(TUNING.ppPerGuard * (tier + 1), 1).mul(b.ppGain));
       s.pp = intRound(s.pp.add(pp));
       out.pp = pp;
@@ -894,6 +905,7 @@ export class Engine {
       if (tier >= TUNING.maxTier) {
         s.won = true;
         s.stats.clears++;
+        this.enqueueStory('win');
       } else {
         s.tier = tier + 1;
         out.nextTier = s.tier;
@@ -923,6 +935,55 @@ export class Engine {
   }
 
   // ── 剧情 ──
+  // 当前深渊进度（对数口径，0 = 开局，1 = 上限）
+  progress() {
+    const s = this.s;
+    const cap = tierCapLog(s.tier);
+    if (!(cap > 0)) return 0;
+    return Math.max(0, Math.min(1, Dec.log10(s.S) / cap));
+  }
+
+  // 条件型剧情的判定；支持 { all: [...] } / { any: [...] } 组合
+  condMet(w) {
+    const s = this.s;
+    if (!w) return false;
+    if (w.all) return w.all.every((x) => this.condMet(x));
+    if (w.any) return w.any.some((x) => this.condMet(x));
+    switch (w.at) {
+      case 'tier': return s.tier >= w.n;
+      case 'mtc': return Dec.log10(s.mtc) >= w.log;
+      case 'cycles': return s.stats.cycles >= w.n;
+      case 'guards': return (s.stats.tierGuards || []).reduce((a, b) => a + b, 0) >= w.n;
+      case 'time': return s.t >= w.sec;
+      case 'ap': return Dec.gte(s.ap, w.n);
+      case 'prog': return this.progress() >= w.gte;
+      case 'upgrade': return (s.chars[w.char] && s.chars[w.char].upgrades[w.idx] || 0) >= w.level;
+      case 'tech': return (s.chars[w.char] && s.chars[w.char].techs[w.idx] || 0) >= w.level;
+      case 'node': return (s.generic[w.id] || 0) >= (w.level || 1);
+      case 'tree': return !!(s.chars[w.char] && s.chars[w.char].tree[w.id]);
+      default: return false;
+    }
+  }
+
+  // 每 0.5 秒扫一遍未播的条件剧情，命中一条就停（避免连播刷屏）
+  checkStoryConditions(dt) {
+    const s = this.s;
+    if (!this.storyConditions) return;
+    if (s.storyQueue.length || s.storyActive || s.pending) return;
+    s.caches.storyTimer = (s.caches.storyTimer || 0) + dt;
+    if (s.caches.storyTimer < 0.5) return;
+    s.caches.storyTimer = 0;
+    for (const entry of STORY) {
+      if (entry.trigger.type !== 'cond') continue;
+      if (s.storySeen.includes(entry.id)) continue;
+      if (!this.condMet(entry.trigger.when)) continue;
+      s.storyQueue.push(entry.id);
+      s.storySeen.push(entry.id);
+      s.paused = true;
+      return;
+    }
+  }
+
   enqueueStory(event) {
     const s = this.s;
     const tier = s.tier;

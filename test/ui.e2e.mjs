@@ -27,21 +27,17 @@ await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForSelector('.l-tab-bar', { timeout: 10000 });
 
-// ── 1. 开场剧情 ──
-console.log('\n[1] 开场剧情（全屏黑底白字 / 点击继续）');
-ok(await page.isVisible('.l-story--full'), '开场是全屏剧情层');
+// ── 1. 开场（剧情表为空时应直接进游戏）──
+console.log('\n[1] 开场（空剧情表）');
+ok(!(await page.isVisible('.l-story')), '没有剧情时不显示剧情层');
 const t0 = await page.evaluate(() => window.__dny.engine().s.t);
-ok(await page.evaluate(() => window.__dny.engine().s.paused), '剧情播放时游戏暂停');
-for (let i = 0; i < 6; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(160);
-}
-ok(!(await page.isVisible('.l-story')), '点完最后一段后剧情层自动消失');
-await page.waitForTimeout(600);
+await page.waitForTimeout(700);
 const t1 = await page.evaluate(() => window.__dny.engine().s.t);
-ok(t1 > t0, `剧情结束后自动继续（t ${t0.toFixed(1)} → ${t1.toFixed(1)}）`);
+ok(t1 > t0, `开局即在推进（t ${t0.toFixed(1)} → ${t1.toFixed(1)}）`);
 await page.screenshot({ path: path.join(shotDir, '30-intro-after.png') });
+
+// 条件型剧情随时插入暂停会破坏后续断言的时序，先关掉；末尾 [10] 单独测它
+await page.evaluate(() => { window.__dny.engine().storyConditions = false; });
 
 const initialLocked = await page.$$eval('.c-upgrade-btn--locked', (els) => els.length);
 
@@ -180,16 +176,8 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(400);
 ok(await page.evaluate(() => window.__dny.engine().s.pending === 'guard'), '进入「待净化」状态');
-ok(await page.isVisible('.l-story'), '守护触发了剧情');
-ok(!(await page.isVisible('.c-pending-box')), '剧情播放时先不显示结算框');
-await page.screenshot({ path: path.join(shotDir, '33-guard-story.png') });
-for (let i = 0; i < 8; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(180);
-}
-ok(await page.isVisible('.c-pending-box'), '剧情结束后出现「净化」结算框');
-await page.screenshot({ path: path.join(shotDir, '34-guard-pending.png') });
+ok(await page.isVisible('.c-pending-box'), '出现「净化」结算框（剧情表为空时直接弹出）');
+await page.screenshot({ path: path.join(shotDir, '33-guard-pending.png') });
 const mpBefore = await page.evaluate(() => window.__dny.engine().s.mp.toNumber());
 await page.click('[data-action="resolve"]');
 await page.waitForTimeout(400);
@@ -273,6 +261,34 @@ await page.waitForTimeout(300);
 const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 ok(overflow <= 2, `窄屏无横向溢出（${overflow}px）`);
 await page.screenshot({ path: path.join(shotDir, '36-mobile.png') });
+
+// ── 10. 剧情播放器（注入临时剧情，验证两种模式 / 说话人 / 暂停）──
+console.log('\n[10] 剧情播放器：全屏 / 底部 / 说话人');
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.evaluate(() => window.__dny.playStory({
+  id: '__test_full', mode: 'fullscreen', title: '测试章节', lines: ['第一段。', '第二段。'],
+}));
+await page.waitForTimeout(300);
+ok(await page.isVisible('.l-story--full'), '全屏剧情层可渲染');
+ok(await page.evaluate(() => window.__dny.engine().s.paused), '播放剧情时游戏暂停');
+await page.click('.l-story');
+await page.waitForTimeout(200);
+await page.screenshot({ path: path.join(shotDir, '97-story-full.png') });
+await page.click('.l-story');
+await page.waitForTimeout(300);
+ok(!(await page.isVisible('.l-story')), '点完最后一段后剧情层消失');
+
+await page.evaluate(() => window.__dny.playStory({
+  id: '__test_bottom', mode: 'bottom', speaker: '249', lines: ['底部剧情。'],
+}));
+await page.waitForTimeout(300);
+ok(await page.isVisible('.l-story--bottom'), '底部剧情层可渲染');
+const speakerText = (await page.textContent('.c-story-speaker').catch(() => '')).trim();
+ok(speakerText === '249', `底部剧情显示说话人（${speakerText}）`);
+await page.screenshot({ path: path.join(shotDir, '37-story-speaker.png') });
+await page.click('.l-story');
+await page.waitForTimeout(250);
+ok(!(await page.isVisible('.l-story')), '底部剧情点完消失');
 
 await browser.close();
 

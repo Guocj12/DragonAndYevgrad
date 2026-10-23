@@ -27,6 +27,8 @@ for (let i = 0; i < 8; i++) {
   await page.click('.l-story');
   await page.waitForTimeout(150);
 }
+// 条件剧情会随时插入暂停；本脚本测的是操作流，先关掉（ui.e2e 的 [10] 单独测它）
+await page.evaluate(() => { window.__dny.engine().storyConditions = false; });
 const clicks = await page.evaluate(async () => {
   let n = 0;
   for (let i = 0; i < 30; i++) {
