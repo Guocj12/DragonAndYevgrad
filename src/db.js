@@ -27,7 +27,9 @@ export const TUNING = {
   memoryByTierLog: [4, 30, 200, 1200, 7000, 40000, 240000, 1400000],
   dragonCut: envNum('DNY_DC', 0.002),   // 屠龙者：每分钟把深渊进度压低的比例
   boostEnabled: true,          // 新加的「强化」科技开关（测试用）
-  upTierWeight: 3,             // 第 i 个升级额外 ×3^i（越靠后越强）
+  upTierWeight: envNum('DNY_TW', 1.5),
+  aimDivisor: 1600,           // r = 本档上限对数 / 1600
+  aimLevels: 20,              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）
   collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）

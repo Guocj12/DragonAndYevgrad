@@ -282,7 +282,7 @@ export class Engine {
         const u = def.upgrades[i];
         const lv = c.upgrades[i];
         if (lv <= 0) continue;
-        if (upBoost[i] > 1) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(upBoost[i]), u.id + 'boost', u.name + '（强化）');
+        { const rr = tierCapLog(s.tier) / TUNING.aimDivisor; const base = Dec.pow10(rr * lv); const w = Dec.pow(d(TUNING.upTierWeight), i); (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(base.mul(w), u.id + 'aim', u.name); }
         // 越靠后的升级越强：第 i 项额外 ×3^i
         if (i > 0) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(Math.pow(TUNING.upTierWeight, i)), u.id + 'w', u.name + '·顺位');
         if (u.kind === 'prod') {
@@ -800,11 +800,14 @@ export class Engine {
     const c = s.chars[charId];
     const def = CHARACTERS[charId].upgrades[idx];
     if (!this.upgradeUnlocked(charId, idx)) return 0;
+    // 每轮解锁 20 级的上限：保证「第 N 轮只能打出 N×10% 的输出」
+    const aimCap = TUNING.aimLevels * (s.stats.cycles + 1);
+    if (c.upgrades[idx] >= aimCap) return 0;
     let bought = 0;
     const maxLevel = def.maxLevel ?? Infinity;
     for (let i = 0; i < howMany; i++) {
       const lv = c.upgrades[idx];
-      if (lv >= maxLevel) break;
+      if (lv >= maxLevel || lv >= aimCap) break;
       const cost = this.costOfUpgrade(charId, idx, lv);
       if (Dec.lt(s.mtc, cost)) break;
       s.mtc = s.mtc.sub(cost);
