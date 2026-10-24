@@ -404,6 +404,11 @@ function act(action, payload) {
       if (payload === 'board') loadBoard();
       break;
     case 'sub': activeSub = payload; break;
+    case 'buyMax': {
+      const n = engine.buyMaxAll(payload.charId);
+      say(n > 0 ? `一口气买了 ${n} 级升级` : '买不起，或者全都满级了');
+      break;
+    }
     case 'produce': {
       const gain = engine.clickProduce();
       say(`生产了 ${fmt(gain)} 杯奶茶`);
@@ -649,13 +654,15 @@ const app = new Vue({
             <span class="c-char-stat__value">{{ vm.body.charInfo.main.value }}</span>
           </div>
           <div class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
-          <div v-if="vm.activeTab === '249' && vm.activeSub === 'upgrades'" class="l-produce-row">
-            <button class="o-primary-btn c-produce-btn"
+          <div v-if="vm.activeSub === 'upgrades'" class="l-produce-row">
+            <button v-if="vm.activeTab === '249'" class="o-primary-btn c-produce-btn"
               @mousedown.prevent="startProduce" @mouseup="stopProduce" @mouseleave="stopProduce"
               @touchstart.prevent="startProduce" @touchend="stopProduce" @touchcancel="stopProduce">
               生产奶茶（+{{ vm.header.prod }}）
             </button>
-            <span class="c-dim-note">点一下 = 1 秒的产量；按住不放 = 每秒 20 次</span>
+            <button class="o-primary-btn" @click="act('buyMax', { charId: vm.page.charId })">购买最大数量</button>
+            <span v-if="vm.activeTab === '249'" class="c-dim-note">生产：点一下 = 1 秒产量，按住 = 每秒 20 次；购买：把能买的都买光</span>
+            <span v-else class="c-dim-note">把当前角色所有能买的升级一次买光</span>
           </div>
           <div v-if="vm.activeSub === 'upgrades'" class="l-upgrade-grid">
             <button v-for="item in vm.body.upgrades" :key="item.key"

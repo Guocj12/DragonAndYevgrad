@@ -736,6 +736,18 @@ export class Engine {
     return (this.s.chars[charId].upgrades[idx - 1] || 0) >= need;
   }
 
+  // 「购买最大数量」：把该角色所有已解锁的升级，各自买到买不起为止
+  buyMaxAll(charId) {
+    let total = 0;
+    const def = CHARACTERS[charId];
+    for (let i = 0; i < def.upgrades.length; i++) {
+      if (!this.upgradeUnlocked(charId, i)) break;   // 后面的还没解锁
+      let guard = 0;
+      while (guard++ < 5000 && this.buyUpgrade(charId, i, 1)) total++;
+    }
+    return total;
+  }
+
   buyUpgrade(charId, idx, howMany = 1) {
     const s = this.s;
     const c = s.chars[charId];
