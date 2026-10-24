@@ -68,7 +68,7 @@ export const costOf = (base, mult, level) => Dec.mul(d(base), pow(mult, level));
 export const TIER_NAMES = ['奶茶店', '耶维城', '飞龙国', '奶茶大陆'];
 
 // 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
-export const REQ_LEVELS = [0, 10, 20, 30, 40, 50, 60, 70];
+export const REQ_LEVELS = [0, 10, 21, 31, 42, 52, 62, 73];
 const UP_GROUP_MULT = 1000;   // 每 10 级的价格倍率（AD 的维度 1 就是 1000）
 const upBase = () => Dec.one();
 // 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9；
@@ -79,7 +79,7 @@ const upCostMult = (i) => UP_COST_MULT(i);
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
 const UP_KAPPA = envNum('DNY_K', 2);             // 每级效果倍率（指数）
-const UP_COST_BASE = envNum('DNY_CB', 20);        // 每级价格倍率（>效果倍率 → 买级有上限）
+const UP_COST_BASE = envNum('DNY_CB', 22);        // 每级价格倍率（>效果倍率 → 买级有上限）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃
