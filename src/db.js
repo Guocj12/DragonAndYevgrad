@@ -24,7 +24,7 @@ export const TUNING = {
   abyssT0: envNum('DNY_T0', 10),         // 对数深渊的特征时间
   abyssFollow: envNum('DNY_AF', 0),   // 深渊增长率跟随玩家产量增速的权重
   // 每档每次覆灭给的数量级（= 该档跨度 / 目标轮数）
-  memoryByTierLog: [15, 187, 1495, 12456, 124000, 1240000, 12400000, 124000000],
+  memoryByTierLog: [4, 30, 200, 1200, 7000, 40000, 240000, 1400000],
   dragonCut: envNum('DNY_DC', 0.002),   // 屠龙者：每分钟把深渊进度压低的比例
   collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
