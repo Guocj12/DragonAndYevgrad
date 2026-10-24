@@ -296,6 +296,7 @@ export class Engine {
 
     // ── 耶维奇 ──
     const line = new Mult('line');
+    line.base = Dec.zero();   // 未解锁时独立产线为 0，不能默认成 1
     const prod249Extra = new Mult('prod249');
     const powerAll = new Mult('powerAll');
     const mtcGain = new Mult('mtc');
@@ -605,6 +606,13 @@ export class Engine {
       if (++n > 5e6) break;
     }
     return n;
+  }
+
+  // 手动生产：点一下 = 1 秒的产量（受产量倍率影响）
+  clickProduce() {
+    const gain = this.bonuses().prodTotal;
+    this.s.mtc = this.s.mtc.add(gain);
+    return gain;
   }
 
   // ── 万事屋：mtc 兑换 MP / PP ──

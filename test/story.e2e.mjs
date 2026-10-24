@@ -73,7 +73,11 @@ const line3 = await storyText();
 ok(line3.includes('店长您回来了') && line3.split('\n').length === 2, `段内两行：${line3.replace(/\n/g, ' / ')}`);
 await page.screenshot({ path: path.join(shotDir, '71-story-249.png') });
 await step(); await step();
-ok((await storyText()) === '要尽快提高奶茶产量来净化深渊了', `最后一段：${await storyText()}`);
+ok((await storyText()) === '要尽快提高奶茶产量来净化深渊了', `教学段：${await storyText()}`);
+await step();
+ok((await storyText()) === '卖奶茶可以获得奶茶币', `新教学 1：${await storyText()}`);
+await step(); await step();
+ok((await storyText()) === '可以靠这个来赚取更多奶茶币，生产更多奶茶~', `新教学 3：${await storyText()}`);
 await step();
 ok(!(await isStory()), '点完最后一段后剧情层消失');
 ok(!(await paused()), '播完后自动继续');
@@ -107,7 +111,7 @@ ok((await storyText()) === '你在耶维城经营着一家奶茶店', `重开第
 const beforeFlush = await page.evaluate(() => window.__dny.engine().s.storyQueue.slice());
 ok(beforeFlush.length >= 2, `重开队列：${beforeFlush.join(' → ')}`);
 // 点掉开场 5 段 + 249 教学 5 段，进入追加
-for (let i = 0; i < 10; i++) await step();
+for (let i = 0; i < 13; i++) await step();
 ok((await speakerText()) === '249', '追加对话由 249 说');
 ok((await storyText()) === '这里还有...记忆点数', `追加第 1 句：${await storyText()}`);
 await page.screenshot({ path: path.join(shotDir, '73-story-first-restart.png') });

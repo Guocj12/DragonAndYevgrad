@@ -104,6 +104,17 @@ export function makeBot(kind = 'value', opts = {}) {
       let guard = 0;
       while (engine.buyGeneric(nid) && guard++ < 200);
     }
+    // 万事屋（mtc → MP / PP）：只在 mtc 远高于兑换价时换，避免挤占升级
+    if (opts.shop !== false && s.unlocked.includes('yewei')) {
+      for (const kind of ['mp', 'pp']) {
+        let guard = 0;
+        while (guard++ < 20) {
+          const price = engine.shopPrice(kind);
+          if (Dec.lt(s.mtc, Dec.mul(price, opts.shopReserve || 1000))) break;
+          if (!engine.buyShop(kind)) break;
+        }
+      }
+    }
     // 角色科技树（AP）
     for (const id of CHARACTER_ORDER) {
       if (!s.unlocked.includes(id)) continue;

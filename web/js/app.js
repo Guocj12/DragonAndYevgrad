@@ -403,6 +403,11 @@ function act(action, payload) {
       if (payload === 'board') loadBoard();
       break;
     case 'sub': activeSub = payload; break;
+    case 'produce': {
+      const gain = engine.clickProduce();
+      say(`生产了 ${fmt(gain)} 杯奶茶`);
+      break;
+    }
     case 'shopBuy': {
       if (engine.buyShop(payload)) say(payload === 'mp' ? '兑换成功：+1 MP' : '兑换成功：+1 PP');
       else say('mtc 不够');
@@ -482,6 +487,8 @@ function act(action, payload) {
       break;
     case 'reset':
       localStorage.removeItem(SAVE_KEY);
+      app.story = null;   // 清掉可能残留的旧剧情进度，否则会从上次的位置继续播
+      app._ignoreStoryClick = true;
       engine = new Engine(createInitialState());
       engine.startStoryIfFirstRun();
       activeTab = '249'; activeSub = 'upgrades';
@@ -545,9 +552,11 @@ const app = new Vue({
   methods: {
     render() {
       this.vm = buildVM();
+      // 换了引擎实例（抹除进度 / 导入存档）→ 旧的故事进度作废，从头播
+      if (this.story && this.story.state && this.story.state !== engine.s) this.story = null;
       if (!this.story && engine.s.storyQueue.length) {
         const entry = engine.nextStory();
-        if (entry) this.story = { entry, idx: 0 };
+        if (entry) this.story = { entry, idx: 0, state: engine.s, createdAt: Date.now() };
       }
       if (this.story && !engine.s.storyActive) this.story = null;
       if (this.vm.activeSub === 'tree' && this.vm.page.kind === 'char') this.$nextTick(() => this.syncTree());
@@ -567,12 +576,14 @@ const app = new Vue({
     },
     nextStory() {
       if (!this.story) return;
+      // 抹除进度后，同一次点击会穿透到刚出现的剧情层 → 只吞掉这一次
+      if (app._ignoreStoryClick) { app._ignoreStoryClick = false; return; }
       if (this.story.idx + 1 < this.story.entry.lines.length) { this.story.idx++; return; }
       engine.finishStory();
       this.story = null;
       if (engine.s.storyQueue.length) {
         const entry = engine.nextStory();
-        if (entry) this.story = { entry, idx: 0 };
+        if (entry) this.story = { entry, idx: 0, state: engine.s, createdAt: Date.now() };
       }
       this.render();
     },
@@ -627,6 +638,10 @@ const app = new Vue({
             <span class="c-char-stat__value">{{ vm.body.charInfo.main.value }}</span>
           </div>
           <div class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
+          <div v-if="vm.activeTab === '249' && vm.activeSub === 'upgrades'" class="l-produce-row">
+            <button class="o-primary-btn" @click="act('produce')">生产奶茶（+{{ vm.header.prod }}）</button>
+            <span class="c-dim-note">点一下 = 1 秒的产量，随产量倍率一起提高</span>
+          </div>
           <div v-if="vm.activeSub === 'upgrades'" class="l-upgrade-grid">
             <button v-for="item in vm.body.upgrades" :key="item.key"
               class="c-upgrade-btn"
@@ -908,7 +923,7 @@ window.__dny = {
   playStory(entry) {
     engine.s.paused = true;
     engine.s.storyActive = true;
-    app.story = { entry, idx: 0 };
+    app.story = { entry, idx: 0, state: engine.s, createdAt: Date.now() };
     app.render();
   },
   unlock(id) {
