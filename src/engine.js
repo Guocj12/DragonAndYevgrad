@@ -1198,7 +1198,10 @@ export class Engine {
     const s = this.s;
     if (isCollapse) {
       const keep = this.b ? this.b.keepMtc : 0;
-      s.mtc = s.mtc.mul(keep);
+      // 记忆归档：取「存量 20%」与「本轮 60 秒产能」的较小者——只给开局手感，不继承上一轮的财富
+      // 只按「轮次」给启动资金，与本轮产能脱钩：否则 mtc 与产量同阶，等于每轮继承产量
+      const runCap = Dec.mul(Dec.pow(TUNING.keepBase, s.stats.cycles), TUNING.keepSeconds);
+      s.mtc = Dec.min(s.mtc.mul(keep), runCap);
       // 升级一律重置（只有科技与科技树保留）
       for (const id of CHARACTER_ORDER) {
         const c = s.chars[id];
@@ -1209,7 +1212,7 @@ export class Engine {
       s.caches.abyssCutTimer = 0;
     }
     s.t = 0;
-    s.run = { peakProd: Dec.zero(), bestPurify: 0 };
+    s.run = { peakProd: Dec.zero(), bestPurify: 0, manualActions: 0, purifiedLog: -Infinity };
     s.S = Dec.pow10(tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0)));
     this.b = null;
   }

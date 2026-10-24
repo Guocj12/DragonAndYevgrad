@@ -24,6 +24,8 @@ export const TUNING = {
   tickSeconds: 0.05,
   mpPerCollapse: 1,
   mpPurifyFactor: 8,          // 旧的净化率系数（保留兼容，已不参与结算）
+  keepSeconds: 1e6,           // 记忆归档的基础保留量
+  keepBase: 1.45,             // 保留量随覆灭次数增长
   mpPerMagnitude: 5,          // 每净化 5 个数量级的深渊，覆灭时多给 1 点基础记忆点数
   ppPerGuard: 12,
   apLayerBase: 1,

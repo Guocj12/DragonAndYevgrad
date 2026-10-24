@@ -21,7 +21,7 @@ export function simulate({ strategy = 'value', maxHours = 24, dt = 0.5, verbose 
     if (eng.s.storyQueue.length) { while (eng.s.storyQueue.length) eng.finishStory(); }
     if (eng.s.pending) eng.resolvePending();
     bot(eng, dt);
-    if (eng.s.won) break;
+    if (eng.s.won) { tierTimes[lastTier] += eng.s.stats.playTime - tierStart; break; }   // 通关时补记最后一段
     if (eng.s.tier !== before) {
       const elapsed = eng.s.stats.playTime - tierStart;
       tierTimes[before] += elapsed;       // 无论守护还是覆灭，时长都记在「离开的那一档」上
