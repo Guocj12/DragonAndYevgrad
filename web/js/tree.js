@@ -86,33 +86,35 @@ export class TreeView {
     const owned = !n.repeat && lv > 0;
     const unlocked = engine.genericUnlocked(n.id);
     const cost = engine.costOfGeneric(n.id, lv);
-    const costText = owned ? '已解锁' : maxed ? '已满级' : !unlocked ? `需先买${engine.parentName(n.id)}` : `${fmt(cost)} PP`;
+    const costText = owned ? '已解锁' : maxed ? '已满级' : !unlocked ? `需先买${engine.parentName(n.id)}` : `${fmt(cost)} 净化点数`;
     return {
       id: n.id, name: n.name, family: 'generic',
       level: lv, repeat: !!n.repeat,
       owned: owned || maxed, unlocked,
       canBuy: unlocked && !owned && !maxed && Dec.gte(engine.s.pp, cost),
       costText,
-      title: `${n.name}\n${n.desc(lv, engine.bonuses().ctx)}\n${owned ? '已解锁' : maxed ? '已满级' : !unlocked ? `需要先购买「${engine.parentName(n.id)}」` : `成本 ${fmt(cost)} PP`}`,
+      title: `${n.name}\n${n.desc(lv, engine.bonuses().ctx)}\n${owned ? '已解锁' : maxed ? '已满级' : !unlocked ? `需要先购买「${engine.parentName(n.id)}」` : `成本 ${fmt(cost)} 净化点数`}`,
     };
   }
 
   charState(engine, charId, n) {
     const owned = !!engine.s.chars[charId].tree[n.id];
     const cost = engine.costOfTreeNode(charId, n.layer);
-    // 前置：层数必须连续（第 1 层随意，之后要先买过上一层）
-    const ownedLayers = CHARACTERS[charId].tree
-      .filter((x) => engine.s.chars[charId].tree[x.id])
-      .map((x) => x.layer);
-    const maxLayer = ownedLayers.length ? Math.max(...ownedLayers) : 0;
-    const layerOk = n.layer <= maxLayer + 1;
-    const costText = owned ? '已解锁' : !layerOk ? '需先解锁上一层' : `${fmt(cost)} AP`;
+    const blocker = engine.treeNodeBlocker(charId, n.id);
+    const leafName = engine.rootLeafName(charId);
+    const costText = owned ? '已解锁'
+      : blocker === 'layer' ? '需先解锁上一层'
+        : blocker === 'leaf' ? `需先买${leafName}`
+          : `${fmt(cost)} 觉醒点`;
     return {
       id: n.id, name: n.name, family: charId,
-      level: 0, repeat: false, owned, layerOk,
-      canBuy: layerOk && !owned && Dec.gte(engine.s.ap, cost),
+      level: 0, repeat: false, owned, layerOk: blocker !== 'layer',
+      canBuy: !owned && !blocker,
       costText,
-      title: `${CHARACTERS[charId].name} · ${n.name}\n${n.desc(0, engine.bonuses().ctx)}\n${owned ? '已解锁' : !layerOk ? '需要先解锁上一层的节点' : `成本 ${fmt(cost)} AP`}`,
+      title: `${CHARACTERS[charId].name} · ${n.name}\n${n.desc(0, engine.bonuses().ctx)}\n${owned ? '已解锁'
+        : blocker === 'layer' ? '需要先解锁上一层的节点'
+          : blocker === 'leaf' ? `需要先购买「${leafName}」`
+            : `成本 ${fmt(cost)} 觉醒点`}`,
     };
   }
 

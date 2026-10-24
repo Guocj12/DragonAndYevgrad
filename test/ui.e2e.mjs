@@ -56,7 +56,7 @@ const initialLocked = await page.$$eval('.c-upgrade-btn--locked', (els) => els.l
 // ── 2. 头部与暂停 ──
 console.log('\n[2] 头部、深渊条、暂停');
 const headerText = await page.textContent('.l-game-header');
-ok(['mtc', 'MP', 'PP', 'AP'].every((k) => headerText.includes(k)), '头部四资源齐全');
+ok(['奶茶币', '记忆点数', '净化点数', '觉醒点'].every((k) => headerText.includes(k)), '头部四资源齐全（中文名）');
 ok(/档\s*0\s*\/\s*3/.test(headerText), '档位显示 0/3');
 await page.click('.c-pause-btn');
 await page.waitForTimeout(120);

@@ -121,7 +121,7 @@ const pct = (x) => `${(x * 100).toFixed(1)}%`;
 
 // ───────────────────────────── 引擎与存档 ─────────────────────────────
 let engine = new Engine(createInitialState());
-let message = '欢迎来到耶维城：先攒 mtc，买「灌装线」。';
+let message = '欢迎来到耶维城：先攒奶茶币，买「灌装线」。';
 let modal = null;
 let activeTab = '249';
 let activeSub = 'upgrades';
@@ -178,7 +178,7 @@ const SUBTABS = (charId) => {
 // 角色页顶部的「主要数据」
 function mainStatVM(charId) {
   const b = engine.bonuses();
-  // 与顶部状态栏保持同一口径：都是总产量（含记忆累积等全局乘区）
+  // 与顶部状态栏保持同一口径：都是总产量
   if (charId === '249') return { label: '奶茶产量', value: `${fmt(b.prodTotal)}/s` };
   if (charId === 'yewei') return { label: '奶茶产量', value: `${fmt(b.prodTotal)}/s` };
   if (charId === 'baiqi') return { label: '战力', value: fmt(b.powerBaiqi) };
@@ -186,7 +186,7 @@ function mainStatVM(charId) {
   return { label: '', value: '' };
 }
 
-// 万事屋：mtc 兑换 MP / PP
+// 万事屋：奶茶币兑换记忆点数 / 净化点数
 function shopVM() {
   const mpPrice = engine.shopPrice('mp');
   const ppPrice = engine.shopPrice('pp');
@@ -258,8 +258,8 @@ function upgradeListVM(charId) {
         : `当前 ${engine.upgradePreview(charId, i)} → 下一级 ${engine.upgradePreview(charId, i, lv + 1)}`,
       bulkCount: bulk.count,
       costLabel: maxed ? '已满级'
-        : bulk.count > 0 ? `买 ${bulk.count} 个 · ${fmt(bulk.total)} mtc`
-          : `${fmt(cost)} mtc`,
+        : bulk.count > 0 ? `买 ${bulk.count} 个 · ${fmt(bulk.total)} 奶茶币`
+          : `${fmt(cost)} 奶茶币`,
       can: unlocked && !maxed && bulk.count > 0,
       kind: 'upgrade', charId, index: i,
     };
@@ -278,7 +278,7 @@ function techListVM(charId) {
       key: t.id, name: t.name, level: lv, maxLevel, maxed, unlocked: true, reqText: '',
       levelText: `Lv ${lv} / ${maxLevel}`,
       desc: t.desc(lv, b.ctx),
-      cost: maxed ? '已满级' : `${fmt(cost)} MP`,
+      cost: maxed ? '已满级' : `${fmt(cost)} 记忆点数`,
       preview: engine.techPreview(charId, i),
       previewLine: maxed
         ? `当前 ${engine.techPreview(charId, i)}（已满级）`
@@ -392,7 +392,7 @@ function doBuy(charId, idx) {
     } else {
       const u = CHARACTERS[charId].upgrades[idx];
       if (engine.s.chars[charId].upgrades[idx] >= (u.maxLevel ?? Infinity)) say('已经满级了');
-      else say('mtc 还不够买下一级');
+      else say('奶茶币还不够买下一级');
     }
   }
 }
@@ -410,8 +410,8 @@ function act(action, payload) {
       break;
     }
     case 'shopBuy': {
-      if (engine.buyShop(payload)) say(payload === 'mp' ? '兑换成功：+1 MP' : '兑换成功：+1 PP');
-      else say('mtc 不够');
+      if (engine.buyShop(payload)) say(payload === 'mp' ? '兑换成功：+1 记忆点数' : '兑换成功：+1 净化点数');
+      else say('奶茶币不够');
       break;
     }
     case 'upgrade': doBuy(payload.charId, payload.index); break;
@@ -420,7 +420,7 @@ function act(action, payload) {
       const id = payload;
       if (id.startsWith('g')) {
         if (!engine.genericUnlocked(id)) say(`需要先购买「${engine.parentName(id)}」`);
-        else if (!engine.buyGeneric(id)) say('PP 不够或已满级');
+        else if (!engine.buyGeneric(id)) say('净化点数不够或已满级');
       }
       else {
         const charId = CHARACTER_ORDER.find((c) => CHARACTERS[c].tree.some((n) => n.id === id));
@@ -429,23 +429,23 @@ function act(action, payload) {
           const owned = CHARACTERS[charId].tree.filter((x) => engine.s.chars[charId].tree[x.id]).map((x) => x.layer);
           const maxLayer = owned.length ? Math.max(...owned) : 0;
           if (!engine.s.chars[charId].tree[id] && node.layer > maxLayer + 1) say('需要先解锁上一层的节点');
-          else if (!engine.buyTreeNode(charId, id)) say('AP 不够');
+          else if (!engine.buyTreeNode(charId, id)) say('觉醒点不够');
         }
       }
       break;
     }
     case 'respec': {
       const back = engine.respecTree(payload.charId);
-      say(`已重置 ${CHARACTERS[payload.charId].name} 科技树，返还 ${fmt(back)} AP`);
+      say(`已重置 ${CHARACTERS[payload.charId].name} 科技树，返还 ${fmt(back)} 觉醒点`);
       break;
     }
     case 'pause': engine.togglePause(); say(engine.s.paused ? '已暂停（可以继续购买）' : '继续'); break;
     case 'resolve': {
       const out = engine.resolvePending();
       if (out) {
-        const parts = [`MP +${fmt(out.mp)}`];
-        if (Dec.gt(out.pp, 0)) parts.push(`PP +${fmt(out.pp)}`);
-        if (Dec.gt(out.ap, 0)) parts.push(`AP +${fmt(out.ap)}`);
+        const parts = [`记忆点数 +${fmt(out.mp)}`];
+        if (Dec.gt(out.pp, 0)) parts.push(`净化点数 +${fmt(out.pp)}`);
+        if (Dec.gt(out.ap, 0)) parts.push(`觉醒点 +${fmt(out.ap)}`);
         say(out.kind === 'guard'
           ? `净化完成：上限 +1 档（当前档 ${out.nextTier}），${parts.join('，')}`
           : `覆灭结算：回到档 0，${parts.join('，')}`);
@@ -535,8 +535,8 @@ const app = new Vue({
     pendingTitle() { return engine.s.pending === 'guard' ? '深渊已清零' : '深渊已满'; },
     pendingDesc() {
       return engine.s.pending === 'guard'
-        ? '点击「净化」结算本轮：获得 MP / PP，并进入下一档。'
-        : '点击「覆灭结算」：获得 MP，回到档 0；升级清空，科技与科技树保留。';
+        ? '点击「净化」结算本轮：获得记忆点数 / 净化点数，并进入下一档。'
+        : '点击「覆灭结算」：获得记忆点数，回到档 0；升级清空，科技与科技树保留。';
     },
     pendingReward() {
       if (!engine.s.pending) return '';
@@ -545,9 +545,9 @@ const app = new Vue({
       const mp = Math.floor(Dec.mul(base, b.mpGain).toNumber());
       if (engine.s.pending === 'guard') {
         const pp = Math.floor(Dec.mul(TUNING.ppPerGuard * (engine.s.tier + 1), 1).mul(b.ppGain).toNumber());
-        return `预计获得：MP +${mp}，PP +${pp}`;
+        return `预计获得：记忆点数 +${mp}，净化点数 +${pp}`;
       }
-      return `预计获得：MP +${mp}`;
+      return `预计获得：记忆点数 +${mp}`;
     },
   },
   methods: {
@@ -607,10 +607,10 @@ const app = new Vue({
   template: `
     <div id="container" class="container c-old-ui l-old-ui" :class="{ 'is-paused': vm.paused }">
       <div class="l-game-header c-game-header">
-        <div class="c-header-res"><span class="c-header-res__label">mtc</span><span class="c-header-res__value">{{ vm.header.mtc }}</span></div>
-        <div class="c-header-res c-header-res--mp"><span class="c-header-res__label">MP</span><span class="c-header-res__value">{{ vm.header.mp }}</span></div>
-        <div class="c-header-res c-header-res--pp"><span class="c-header-res__label">PP</span><span class="c-header-res__value">{{ vm.header.pp }}</span></div>
-        <div class="c-header-res c-header-res--ap"><span class="c-header-res__label">AP</span><span class="c-header-res__value">{{ vm.header.ap }}</span></div>
+        <div class="c-header-res"><span class="c-header-res__label">奶茶币</span><span class="c-header-res__value">{{ vm.header.mtc }}</span></div>
+        <div class="c-header-res c-header-res--mp"><span class="c-header-res__label">记忆点数</span><span class="c-header-res__value">{{ vm.header.mp }}</span></div>
+        <div class="c-header-res c-header-res--pp"><span class="c-header-res__label">净化点数</span><span class="c-header-res__value">{{ vm.header.pp }}</span></div>
+        <div class="c-header-res c-header-res--ap"><span class="c-header-res__label">觉醒点</span><span class="c-header-res__value">{{ vm.header.ap }}</span></div>
         <div class="c-header-tier">档 {{ vm.header.tier }} / {{ vm.header.tierMax }}</div>
         <button class="o-primary-btn c-pause-btn" :class="{ 'c-pause-btn--on': vm.paused }" :disabled="!!vm.pending" @click="act('pause')">
           {{ vm.paused ? '▶ 继续' : '⏸ 暂停' }}
@@ -700,23 +700,23 @@ const app = new Vue({
             <div class="l-tree-actions">
               <div v-for="c in vm.body.treeStat" :key="c.charId" class="c-tree-action">
                 <span>{{ c.name }} 科技树（{{ c.count }} / 9）</span>
-                <button class="o-primary-btn" @click="act('respec', { charId: c.charId })">重置并返还 AP</button>
+                <button class="o-primary-btn" @click="act('respec', { charId: c.charId })">重置并返还觉醒点</button>
               </div>
             </div>
           </div>
 
           <div v-else-if="vm.activeSub === 'shop'" class="l-shop">
-            <div class="l-section-title">万事屋 <span class="c-hint">用 mtc 兑换资源，价格随兑换次数指数上涨</span></div>
+            <div class="l-section-title">万事屋 <span class="c-hint">用奶茶币兑换资源，价格随兑换次数指数上涨</span></div>
             <div class="l-shop-grid">
               <div class="c-shop-card">
-                <div class="c-shop-card__head">记忆点数 <span class="c-dim-note">MP</span></div>
-                <div class="c-shop-card__price">{{ vm.body.shop.mp.price }} mtc / 1 MP</div>
+                <div class="c-shop-card__head">记忆点数</div>
+                <div class="c-shop-card__price">{{ vm.body.shop.mp.price }} 奶茶币 / 1 记忆点数</div>
                 <div class="c-dim-note">已兑换 {{ vm.body.shop.mp.count }} 次 · 增长率 ×{{ vm.body.shop.mpGrowth }}</div>
                 <button class="o-primary-btn" :disabled="!vm.body.shop.mp.can" @click="act('shopBuy', 'mp')">兑换 1 MP</button>
               </div>
               <div class="c-shop-card">
-                <div class="c-shop-card__head">净化点数 <span class="c-dim-note">PP</span></div>
-                <div class="c-shop-card__price">{{ vm.body.shop.pp.price }} mtc / 1 PP</div>
+                <div class="c-shop-card__head">净化点数</div>
+                <div class="c-shop-card__price">{{ vm.body.shop.pp.price }} 奶茶币 / 1 净化点数</div>
                 <div class="c-dim-note">已兑换 {{ vm.body.shop.pp.count }} 次 · 增长率 ×{{ vm.body.shop.ppGrowth }}</div>
                 <button class="o-primary-btn" :disabled="!vm.body.shop.pp.can" @click="act('shopBuy', 'pp')">兑换 1 PP</button>
               </div>
@@ -841,7 +841,7 @@ const app = new Vue({
           <div class="l-section-title">玩法速记</div>
           <div class="c-dim-note" style="max-width:110rem;text-align:left">
             深渊每秒按超指数增长：充满 → 覆灭（回到档 0），清零 → 守护（进下一档）。
-            升级用 mtc（每轮重置），科技用 MP（永不重置），科技树用 AP（可重置返还），通用树用 PP。
+            升级用奶茶币（每轮重置），科技用记忆点数（永不重置），角色科技树用觉醒点（可重置返还），通用树用净化点数。
             守护 / 覆灭 / 剧情播放时自动暂停，结算完自动继续。
           </div>
         </template>
@@ -922,7 +922,7 @@ function frame(now) {
 if (!loadGame()) {
   engine = new Engine(createInitialState());
   engine.startStoryIfFirstRun();
-  say('欢迎来到耶维城：先攒 mtc，买「灌装线」。');
+  say('欢迎来到耶维城：先攒奶茶币，买「灌装线」。');
 }
 app.render();
 requestAnimationFrame(frame);

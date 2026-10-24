@@ -40,11 +40,10 @@ export const STORY = [
       '尽可能多的生产奶茶，守住耶维城',
     ],
   },
-  // ── 249 登场与教学（紧接着开场；每次重开也播）──
+  // ── 249 登场与教学（第一次进店才带自我介绍）──
   {
     id: '249-intro',
     trigger: { type: 'restart' },
-    repeat: true,
     mode: 'bottom',
     lines: [
       { speaker: '', text: '249是奶茶店的人工智能' },
@@ -55,6 +54,19 @@ export const STORY = [
       { speaker: '249', text: '卖奶茶可以获得奶茶币' },
       { speaker: '249', text: '奶茶币可以用来购买各种升级，提高奶茶产量' },
       { speaker: '249', text: '可以靠这个来赚取更多奶茶币，生产更多奶茶~' },
+    ],
+  },
+  // ── 覆灭后重来：不再自我介绍，换成一句设置提示 + 记忆累积的感受 ──
+  {
+    id: '249-intro-again',
+    trigger: { type: 'restart', onlyIfSeen: '249-intro' },
+    repeat: true,
+    mode: 'bottom',
+    lines: [
+      { speaker: '', text: '（可以在设置里跳过已读过的剧情）' },
+      { speaker: '249', text: '店长您回来了~\n奶茶产线还在正常工作' },
+      { speaker: '249', text: '要尽快提高奶茶产量来净化深渊了' },
+      { speaker: '249', text: '...明明什么都记不住，做奶茶的手感好像更熟练了' },
     ],
   },
   // ── 第一次覆灭后的重开（只播一次）──

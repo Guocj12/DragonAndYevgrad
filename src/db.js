@@ -5,7 +5,7 @@
 //   所有升级都没有等级上限（只受奶茶币增速限制）；每级成本 ×(2,3,…,9)，每级效果是它的 1/8 次方。
 //   解锁链 REQ_LEVELS：前一个升级买到 10/20/…/70 级才开下一个；所有升级基础价统一为 1。
 //   MP / PP / AP 一律整数。
-// 描述风格照 AD：短句 + 数字，写成「产量 ×2/级」「覆灭 MP ×(1 + 0.1 × 等级 × 本轮分钟数)」这种。
+// 描述风格照 AD：短句 + 数字，写成「产量 ×2/级」「覆灭记忆点数 ×(1 + 0.1 × 等级 × 本轮分钟数)」这种。
 
 import { Dec } from './num.js';
 
@@ -30,7 +30,7 @@ export const TUNING = {
   autoBuyIntervalMult: 0.95,
   autoBuyMinInterval: 0.05,
   autoBuyMaxLevel: 67,
-  memoryBase: envNum('DNY_MB', 1.45),
+  memoryBase: envNum('DNY_MB', 1.45),   // 记忆累积：每覆灭一次，全体产量 ×1.45
   alphaCap: envNum('DNY_ALPHA', 0.5),
   bulkGroup: 10,
   groupCostMult: 1,
@@ -73,22 +73,22 @@ const C249 = {
     { id: '249t1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
     { id: '249t2', name: '超频', kind: 'mpByTime', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
-      desc: () => '覆灭 MP ×(1 + 0.1 × 等级 × 本轮分钟数)。' },
+      desc: () => '覆灭记忆点数 ×(1 + 0.1 × 等级 × 本轮分钟数)。' },
     { id: '249t3', name: '增产', kind: 'ppByEarliness', cost: (l) => costOf(3, 1.3, l), maxLevel: Infinity,
-      desc: () => '覆灭 PP ×(1 + 0.1 × 等级 × 剩余分钟数)。' },
+      desc: () => '覆灭净化点数 ×(1 + 0.1 × 等级 × 剩余分钟数)。' },
     { id: '249t4', name: '蓄势', kind: 'prodByTime', cost: (l) => costOf(5, 1.35, l), maxLevel: Infinity,
       desc: () => '产量 ×(1 + 0.05 × 等级 × 本轮分钟数)。' },
   ],
   tree: [
-    { id: '249a1', name: '记忆归档', layer: 1, desc: () => '覆灭保留 20% mtc。' },
+    { id: '249a1', name: '记忆归档', layer: 1, desc: () => '覆灭保留 20% 奶茶币。' },
     { id: '249a2', name: '时间加速', layer: 2, desc: () => '生产速度 ×(1 + 0.15 × 节点数)。' },
-    { id: '249a3', name: '资源共鸣', layer: 2, desc: () => '覆灭 MP ×(1 + 覆灭次数/4)。' },
+    { id: '249a3', name: '资源共鸣', layer: 2, desc: () => '覆灭记忆点数 ×(1 + 覆灭次数/4)。' },
     { id: '249a4', name: '净化协议', layer: 3, desc: () => '净化效率 ×(1 + 0.8 × 本轮进度)。' },
-    { id: '249a5', name: '快速重启', layer: 3, desc: () => '开局 mtc ×(1 + 0.5 × 节点数)。' },
+    { id: '249a5', name: '快速重启', layer: 3, desc: () => '开局奶茶币 ×(1 + 0.5 × 节点数)。' },
     { id: '249a6', name: '离线强化', layer: 3, desc: () => '离线收益 +30%。' },
     { id: '249a7', name: '产线扩张', layer: 4, desc: () => '产量 ×(1 + 0.01 × 全场总等级)^0.5。' },
     { id: '249a8', name: '记忆过载', layer: 4, desc: () => '产量 ×(1 + 本轮秒数/300)，上限 ×2。' },
-    { id: '249a9', name: '记忆奇点', layer: 5, desc: () => '产量 ×2，并把 mtc^0.5 计入产量。' },
+    { id: '249a9', name: '记忆奇点', layer: 5, desc: () => '产量 ×2，并把 奶茶币^0.5 计入产量。' },
   ],
 };
 
@@ -116,9 +116,9 @@ const YEWEI = {
     { id: 'ywt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
     { id: 'ywt2', name: '商业谈判', kind: 'shopDiscount', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
-      desc: (l) => `MP 兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 1.6 * Math.pow(0.97, l)).toFixed(3)}）。` },
+      desc: (l) => `记忆点数兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 1.6 * Math.pow(0.97, l)).toFixed(3)}）。` },
     { id: 'ywt3', name: '渠道批发', kind: 'shopDiscountPP', cost: (l) => costOf(3, 1.5, l), maxLevel: Infinity,
-      desc: (l) => `PP 兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 2.2 * Math.pow(0.97, l)).toFixed(3)}）。` },
+      desc: (l) => `净化点数兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 2.2 * Math.pow(0.97, l)).toFixed(3)}）。` },
     { id: 'ywt4', name: '资源转化', kind: 'crossChar', cost: (l) => costOf(5, 1.6, l), maxLevel: Infinity,
       desc: (l) => `把 249 加成的 ${((0.2 * l) / (l + 10) * 100).toFixed(1)}% 叠到独立产线，独立产线的同比例叠到 249。` },
   ],
@@ -129,7 +129,7 @@ const YEWEI = {
     { id: 'ywa4', name: '挚友', layer: 3, desc: () => '白琦战力 ×(1 + 0.3 × 耶维奇等级 × 节点数)。' },
     { id: 'ywa5', name: '幕后', layer: 3, desc: () => '产量 ×(1 + 0.2 × 节点数)。' },
     { id: 'ywa6', name: '连锁经营', layer: 3, desc: () => '独立产线 ×(1 + 0.1 × 耶维奇等级)。' },
-    { id: 'ywa7', name: '谈判', layer: 4, desc: () => 'mtc 获取 ×(1 + 0.5 × 覆灭次数)。' },
+    { id: 'ywa7', name: '谈判', layer: 4, desc: () => '奶茶币获取 ×(1 + 0.5 × 覆灭次数)。' },
     { id: 'ywa8', name: '分号', layer: 4, desc: () => '独立产线 ×(1 + 0.5 × 节点数)。' },
     { id: 'ywa9', name: '万事屋本店', layer: 5, desc: () => '249 产量与独立产线 ×(1 + 0.15 × log10 对方产量)。' },
   ],
@@ -161,7 +161,7 @@ const BAIQI = {
     { id: 'bqt2', name: '蓄力斩', kind: 'charge', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
       desc: () => '每 3 秒蓄力，下击伤害 ×(1 + 1.5 × 等级)。' },
     { id: 'bqt3', name: '吸血', kind: 'lifesteal', cost: (l) => costOf(3, 1.5, l), maxLevel: Infinity,
-      desc: (l) => `伤害的 ${(3 * l).toFixed(0)}% 转为 mtc。` },
+      desc: (l) => `伤害的 ${(3 * l).toFixed(0)}% 转为奶茶币。` },
     { id: 'bqt4', name: '斩杀', kind: 'execute', cost: (l) => costOf(5, 1.6, l), maxLevel: Infinity,
       desc: (l) => `深渊进度 < ${(10 + 4 * l).toFixed(0)}% 时伤害 ×(1 + 等级)^2。` },
   ],
@@ -236,8 +236,8 @@ const CENTER_STEPS = [
   '自动结算覆灭。',
   '自动结算净化。',
   '自动购买奶茶翻倍。',
-  '自动购买 MP 翻倍。',
-  '自动购买 PP 翻倍。',
+  '自动购买记忆点数翻倍。',
+  '自动购买净化点数翻倍。',
   '自动购买净化翻倍。',
 ];
 
@@ -247,10 +247,10 @@ export const GENERIC_TREE = [
 
   { id: 'g8', name: '奶茶翻倍', layer: 1, slot: 'trunk', angle: 45, parent: 'g7', repeat: true,
     cost: (l) => costOf(5, 4.9, l), desc: (l) => `产量 ×2/级，当前 ×${Math.pow(2, l)}。` },
-  { id: 'g10', name: 'MP 翻倍', layer: 1, slot: 'trunk', angle: -45, parent: 'g7', repeat: true,
-    cost: (l) => costOf(10, 4.9, l), desc: (l) => `MP 获取 ×5/级，当前 ×${Math.pow(5, l)}。` },
-  { id: 'g11', name: 'PP 翻倍', layer: 1, slot: 'trunk', angle: -135, parent: 'g7', repeat: true,
-    cost: (l) => costOf(10, 4.9, l), desc: (l) => `PP 获取 ×5/级，当前 ×${Math.pow(5, l)}。` },
+  { id: 'g10', name: '记忆点数翻倍', layer: 1, slot: 'trunk', angle: -45, parent: 'g7', repeat: true,
+    cost: (l) => costOf(10, 4.9, l), desc: (l) => `记忆点数获取 ×5/级，当前 ×${Math.pow(5, l)}。` },
+  { id: 'g11', name: '净化点数翻倍', layer: 1, slot: 'trunk', angle: -135, parent: 'g7', repeat: true,
+    cost: (l) => costOf(10, 4.9, l), desc: (l) => `净化点数获取 ×5/级，当前 ×${Math.pow(5, l)}。` },
   { id: 'g9', name: '净化翻倍', layer: 1, slot: 'trunk', angle: 135, parent: 'g7', repeat: true,
     cost: (l) => costOf(50, 18, l), desc: (l) => `净化效率 ×10/级，当前 ×${Math.pow(10, l)}。` },
 
@@ -269,7 +269,7 @@ export const GENERIC_TREE = [
   { id: 'g4', name: '离线削弱', layer: 2, slot: 'leaf', angle: 180, parent: 'g9', repeat: false, cost: () => d(20),
     desc: () => '离线时深渊增速 ×0.25。' },
   { id: 'g13', name: '科技折扣', layer: 2, slot: 'leaf', angle: 135, parent: 'g9', repeat: true, cap: 10,
-    cost: (l) => costOf(10, 3, l), desc: (l) => `MP 科技成本 ×0.97/级，当前 −${(100 - Math.pow(0.97, l) * 100).toFixed(1)}%。` },
+    cost: (l) => costOf(10, 3, l), desc: (l) => `科技成本 ×0.97/级，当前 −${(100 - Math.pow(0.97, l) * 100).toFixed(1)}%。` },
 ];
 
 export const CHARACTERS = { '249': C249, yewei: YEWEI, baiqi: BAIQI, heng: HENG };

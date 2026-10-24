@@ -111,7 +111,7 @@ ok((await storyText()) === '你在耶维城经营着一家奶茶店', `重开第
 const beforeFlush = await page.evaluate(() => window.__dny.engine().s.storyQueue.slice());
 ok(beforeFlush.length >= 2, `重开队列：${beforeFlush.join(' → ')}`);
 // 点掉开场 5 段 + 249 教学 5 段，进入追加
-for (let i = 0; i < 13; i++) await step();
+for (let i = 0; i < 9; i++) await step();   // 5 段开场 + 4 段重播版 249
 ok((await speakerText()) === '249', '追加对话由 249 说');
 ok((await storyText()) === '这里还有...记忆点数', `追加第 1 句：${await storyText()}`);
 await page.screenshot({ path: path.join(shotDir, '73-story-first-restart.png') });

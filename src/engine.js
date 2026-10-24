@@ -225,11 +225,11 @@ export class Engine {
 
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
+    genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', `记忆累积（覆灭 ${ctx.cycles} 次）`);
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
     let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
     let offlineSlow = 0.25, autoTech = false, lastStand = false, centerLv = 0;
-    genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', '记忆累积（覆灭次数）');
     for (const n of GENERIC_TREE) {
       const lv = g(n.id);
       if (!lv) continue;
@@ -347,7 +347,7 @@ export class Engine {
     const prod249Final = prod249.value().mul(prod249Extra.value());
     let prodTotal = prod249Final.add(line.value());
     if (singularity) prodTotal = prodTotal.add(Dec.pow(Dec.max(s.mtc, 1), 0.5));
-    // 通用乘区（含记忆累积、奶茶翻倍等）作用在全体产量上
+    // 通用乘区（奶茶翻倍、共鸣等）作用在全体产量上
     prodTotal = prodTotal.mul(genericProd.value());
 
     // ── 白琦 ──
@@ -788,22 +788,35 @@ export class Engine {
     return intCeil(treeLayerCost(layer));
   }
 
-  buyTreeNode(charId, nodeId) {
+  // 角色树节点的前置：'layer' 需先解锁上一层 / 'leaf' 需先买同方向通用叶子 / 'ap' 觉醒点不够 / null 可买
+  treeNodeBlocker(charId, nodeId) {
     const s = this.s;
     const c = s.chars[charId];
     const node = CHARACTERS[charId].tree.find((n) => n.id === nodeId);
-    if (!node || c.tree[nodeId]) return false;
+    if (!node || c.tree[nodeId]) return null;
     let maxLayer = 0;
     for (const n of CHARACTERS[charId].tree) if (c.tree[n.id]) maxLayer = Math.max(maxLayer, n.layer);
-    if (node.layer > maxLayer + 1) return false;
-    // 根节点（第 1 层）还得先买下同方向的通用叶子
+    if (node.layer > maxLayer + 1) return 'layer';
     if (node.layer === 1) {
       const leaf = GENERIC_TREE.find((g) => g.slot === 'leaf' && g.angle === CHARACTERS[charId].angle);
-      if (leaf && !(s.generic[leaf.id] > 0)) return false;
+      if (leaf && !(s.generic[leaf.id] > 0)) return 'leaf';
     }
-    const cost = intCeil(treeLayerCost(node.layer));
-    if (Dec.lt(s.ap, cost)) return false;
-    s.ap = intRound(s.ap.sub(cost));
+    if (Dec.lt(s.ap, intCeil(treeLayerCost(node.layer)))) return 'ap';
+    return null;
+  }
+
+  // 该角色第 1 层要挂的通用叶子名（给提示文案用）
+  rootLeafName(charId) {
+    const leaf = GENERIC_TREE.find((g) => g.slot === 'leaf' && g.angle === CHARACTERS[charId].angle);
+    return leaf ? leaf.name : '';
+  }
+
+  buyTreeNode(charId, nodeId) {
+    const s = this.s;
+    const c = s.chars[charId];
+    if (this.treeNodeBlocker(charId, nodeId)) return false;
+    const node = CHARACTERS[charId].tree.find((n) => n.id === nodeId);
+    s.ap = intRound(s.ap.sub(intCeil(treeLayerCost(node.layer))));
     c.tree[nodeId] = true;
     this.b = null;
     return true;
@@ -1066,10 +1079,13 @@ export class Engine {
   // auto = true（自动化中枢自动结算）时，已读的一律不弹，免得挂机被开场刷屏
   enqueueRestart(auto = false) {
     const s = this.s;
+    // 用入队前的已读快照判断 onlyIfSeen，避免刚入队的条目把自己算成「已读」
+    const seenBefore = new Set(s.storySeen);
     for (const entry of STORY) {
       const t = entry.trigger;
       if (t.type !== 'restart') continue;
       if (t.count !== undefined && t.count !== (s.stats.collapses || 0)) continue;
+      if (t.onlyIfSeen && !seenBefore.has(t.onlyIfSeen)) continue;
       if (auto && s.storySeen.includes(entry.id)) continue;
       if (!this.canPlayStory(entry)) continue;
       this.pushStory(entry);
