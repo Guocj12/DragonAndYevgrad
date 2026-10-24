@@ -1223,9 +1223,14 @@ export class Engine {
       s.caches.abyssCutTimer = 0;
     }
     s.t = 0;
+    const prevPeak = s.run ? s.run.peakProd : Dec.zero();
     s.run = { peakProd: Dec.zero(), bestPurify: 0, manualActions: 0, purifiedLog: -Infinity };
-    s.S = Dec.pow10(tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0)));
+    // 深渊起点：取「本档固定起点」与「玩家进档时产量 × 10^gap」的较大者，
+    // 这样进新档时深渊总比玩家强一点点，靠轮内加速去追，而不是一跳 100 个数量级。
     this.b = null;
+    const baseLog = tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0));
+    const pLog = Dec.log10(Dec.max(prevPeak, 1)) + TUNING.startGap;
+    s.S = Dec.pow10(Math.max(baseLog, pLog));
   }
 
   // ── 贡献面板 ──
