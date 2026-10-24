@@ -28,12 +28,12 @@ export const TUNING = {
   dragonCut: envNum('DNY_DC', 0.002),   // 屠龙者：每分钟把深渊进度压低的比例
   boostEnabled: true,          // 新加的「强化」科技开关（测试用）
   upTierWeight: envNum('DNY_TW', 1),
-  mpMagnitudeDiv: 20,          // MP = 10^(净化量级/20)（慢启动）
+  mpMagnitudeDiv: 3,          // MP = 10^(净化量级/20)（慢启动）
   techRampMax: 5,              // 科技每级最多给 10^5
   aimStep: envNum('DNY_STEP', 0.1),   // 每轮推进全档的 10%
   aimDivisor: 1600,           // r = 本档上限对数 / 1600
   aimLevels: 25,               // 每轮解锁 25 级
-  upBase: 16,               // 升级每级倍率（反推值）              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）
+  upBase: 8,               // 升级每级倍率（反推值）              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）
   collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
@@ -68,7 +68,7 @@ export const costOf = (base, mult, level) => Dec.mul(d(base), pow(mult, level));
 export const TIER_NAMES = ['奶茶店', '耶维城', '飞龙国', '奶茶大陆'];
 
 // 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
-export const REQ_LEVELS = [0, 20, 40, 60, 80, 100, 120, 140];
+export const REQ_LEVELS = [0, 12, 24, 36, 48, 60, 72, 84];
 const UP_GROUP_MULT = 1000;   // 每 10 级的价格倍率（AD 的维度 1 就是 1000）
 const upBase = () => Dec.one();
 // 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9；
@@ -79,7 +79,7 @@ const upCostMult = (i) => UP_COST_MULT(i);
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
 const UP_KAPPA = envNum('DNY_K', 2);             // 每级效果倍率（指数）
-const UP_COST_BASE = envNum('DNY_CB', 20);        // 每级价格倍率（>效果倍率 → 买级有上限）
+const UP_COST_BASE = envNum('DNY_CB', 15);        // 每级价格倍率（>效果倍率 → 买级有上限）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃

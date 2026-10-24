@@ -374,15 +374,7 @@ export class Engine {
     if (singularity) prodTotal = prodTotal.add(Dec.pow(Dec.max(s.mtc, 1), 0.5));
     // 通用乘区（奶茶翻倍、共鸣等）作用在全体产量上
     prodTotal = prodTotal.mul(genericProd.value()).mul(achMul);
-    // ── 分段函数：本档第 N 轮的产量由轮次直接决定（一级一级算好写死）──
-    // 档0：第1轮 1e10、第2轮 1e22.5、第3轮 1e35 … 每轮 +12.5（= 深渊起点的 10%）
-    {
-      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
-      const perRun = tierCapLog(s.tier) * 0.5 * TUNING.aimStep;   // 每轮要推进的数量级
-      const baseLog = perRun - Math.log10(TUNING.tauByTier[s.tier] || TUNING.tau);
-      const targetLog = baseLog * n;
-      if (isFinite(targetLog) && targetLog > 0) prodTotal = Dec.pow10(targetLog);
-    }
+    // 产量完全由升级/科技/角色算出（无硬编码）
     // 产量由升级/科技/角色真实决定（不再锁定）
 
     // ── 白琦 ──
@@ -580,14 +572,7 @@ export class Engine {
     s.caches.baiqiStock = d(s.caches.baiqiStock || 0).add((s.caches.rateBaiqi || Dec.zero()).mul(dt));
 
     // 2. 战斗结算（净化 + 战斗伤害）
-    let totalDmg = b.purifyTea.add(b.dmgTotal);
-    // ── 分段函数（净化层）：本档第 N 轮严格打出深渊起点的 N×10% ──
-    {
-      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
-      const targetTotalLog = TUNING.aimStep * n * tierCapLog(s.tier) * 0.5;
-      const expectTicks = Math.max(1, (TUNING.tauByTier[s.tier] || TUNING.tau) / dt);
-      totalDmg = Dec.pow10(targetTotalLog - Math.log10(expectTicks));
-    }
+    const totalDmg = b.purifyTea.add(b.dmgTotal);   // 真实输出
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
