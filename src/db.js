@@ -53,12 +53,14 @@ export const TIER_NAMES = ['奶茶店', '耶维城', '飞龙国', '奶茶大陆'
 
 // 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
 export const REQ_LEVELS = [0, 10, 12, 14, 16, 18, 20, 20];
+const UP_GROUP_MULT = 1000;   // 每 10 级的价格倍率（AD 的维度 1 就是 1000）
 const upBase = () => Dec.one();
 // 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9；
 // 每级效果 = 成本倍率的 1/8 次方，保证 8 项在同一个 mtc 数量级下贡献相同。
 export const UP_COST_MULT = (i) => i + 2;
 const upCostMult = (i) => UP_COST_MULT(i);
-const upCost = (i) => (l) => Dec.mul(upBase(i), pow(upCostMult(i), l));
+// 价格也是幂：1 + 0.5·l^2.5（幂次高于效果的 l^1.5，所以越买越贵、自然收敛，但不会一买就卡死）
+const upCost = (i) => (l) => Dec.mul(upBase(i), d(1 + 0.5 * Math.pow(l, 8)));
 
 // ─────────────────────────────────────────────
 // 249
