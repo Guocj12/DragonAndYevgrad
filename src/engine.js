@@ -589,8 +589,15 @@ export class Engine {
     const p = Math.max(0, Math.min(1, 1 - Dec.log10(s.S) / Math.max(1, b.ctx.y0)));
     if (p > s.run.bestPurify) s.run.bestPurify = p;
 
-    // 3. 深渊增长（超指数）
-    const rate = abyssRate(s.tier, s.t) * this.abyssRateMult * this.offlineMult;
+    // 3. 深渊增长：基础速率 × 玩家产量对数增速的跟随项
+    //    玩家产能涨得快，深渊才涨得快，且滞后、且只有一部分权重 —— 这样每轮都能清得更多，
+    //    直到某一轮玩家的加速度反超，把深渊压到 0。
+    const pLogNow = Dec.log10(Dec.max(b.prodTotal, 1));
+    const pLogPrev = (s.caches.prevProdLog === undefined) ? pLogNow : s.caches.prevProdLog;
+    s.caches.prevProdLog = pLogNow;
+    const growth = Math.max(0, Math.min(20, (pLogNow - pLogPrev) / dt));
+    const follow = 1 + TUNING.abyssFollow * growth;
+    const rate = abyssRate(s.tier, s.t) * this.abyssRateMult * this.offlineMult * follow;
     if (rate > 0 && Dec.gt(s.S, 0)) s.S = Dec.pow10(Dec.log10(s.S) + rate * dt);
 
     // 3.5 屠龙者（白琦 5 层）：每分钟把深渊进度（对数）压低 8%
