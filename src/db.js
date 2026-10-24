@@ -28,7 +28,7 @@ export const TUNING = {
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
   tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
   tierMantissa: 2.49,
-  maxTier: 3,
+  maxTier: 7,
   tickSeconds: 0.05,
   mpPerCollapse: 1,
   mpPurifyFactor: 8,          // 旧的净化率系数（保留兼容，已不参与结算）
