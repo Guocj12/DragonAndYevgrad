@@ -108,7 +108,7 @@ ok(Number.isInteger(mpNow), `MP 是整数（${mpNow}）`);
 
 // ── 5. 科技树（vis-network）──
 console.log('\n[5] 科技树：缩放 / 拖动 / 点击购买');
-await page.click('.l-tab-bar .o-tab-btn:has-text("科技树")');
+await page.click('.c-subtab-button-container .o-tab-btn--secondary:has-text("科技树")');
 await page.waitForTimeout(700);
 const treeInfo = await page.evaluate(() => {
   const t = window.__dny.tree();
@@ -135,6 +135,8 @@ const v2 = await page.evaluate(() => window.__dny.tree().network.getViewPosition
 ok(Math.abs(v1.x - v2.x) + Math.abs(v1.y - v2.y) > 5, '拖动平移生效');
 await page.evaluate(() => window.__dny.give({ pp: '5000' }));
 await page.waitForTimeout(300);
+await page.locator('.c-tree-host').scrollIntoViewIfNeeded();
+await page.waitForTimeout(250);
 const clickNode = async (id) => {
   const pt = await page.evaluate((nodeId) => {
     const tv = window.__dny.tree();
@@ -167,7 +169,9 @@ await page.screenshot({ path: path.join(shotDir, '32-tree-network.png') });
 // 切走再切回来，树必须重新出现（之前的空白 bug）
 await page.click('.l-tab-bar .o-tab-btn:has-text("数据")');
 await page.waitForTimeout(300);
-await page.click('.l-tab-bar .o-tab-btn:has-text("科技树")');
+await page.click('.l-tab-bar .o-tab-btn:has-text("249")');
+await page.waitForTimeout(300);
+await page.click('.c-subtab-button-container .o-tab-btn--secondary:has-text("科技树")');
 await page.waitForTimeout(700);
 const treeRebuilt = await page.evaluate(() => {
   const tv = window.__dny.tree();

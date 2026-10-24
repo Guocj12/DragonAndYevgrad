@@ -635,3 +635,44 @@ body {
   background: rgba(0, 0, 0, 0.35);
   color: inherit;
 }
+
+/* ── 角色主数据 / 万事屋 / 战斗 ── */
+.c-char-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 0.4rem 0 0.6rem;
+}
+.c-char-stat__label { font-size: 1.3rem; opacity: 0.75; }
+.c-char-stat__value { font-size: 1.9rem; font-weight: bold; color: var(--color-good); }
+
+.l-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1.2rem;
+  max-width: 80rem;
+}
+.c-shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: var(--var-border-width, 0.2rem) solid var(--color-accent);
+  border-radius: var(--var-border-radius, 0.5rem);
+}
+.c-shop-card__head { font-size: 1.6rem; }
+.c-shop-card__price { font-size: 1.4rem; color: var(--color-good); }
+
+.l-battle .c-battle-stage {
+  position: relative;
+  overflow: hidden;
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+  border: var(--var-border-width, 0.2rem) solid var(--color-bad);
+  border-radius: var(--var-border-radius, 0.5rem);
+  max-width: 80rem;
+}
+.c-battle-abyss { font-size: 1.8rem; }
+.c-battle-progress { font-size: 1.3rem; opacity: 0.8; }
+.c-battle-floats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.8rem; }
+.c-battle-float { font-size: 1.3rem; color: var(--color-bad); }

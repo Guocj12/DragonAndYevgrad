@@ -159,12 +159,64 @@ function loadGame() {
 const TAB_DEFS = () => {
   const tabs = CHARACTER_ORDER.filter((id) => engine.s.unlocked.includes(id))
     .map((id) => ({ id, name: CHARACTERS[id].name, kind: 'char' }));
-  tabs.push({ id: 'tree', name: '科技树', kind: 'tree' });
   tabs.push({ id: 'board', name: '排行榜', kind: 'board' });
   tabs.push({ id: 'stats', name: '数据', kind: 'stats' });
   tabs.push({ id: 'options', name: '设置', kind: 'options' });
   return tabs;
 };
+
+// 每个角色自己的子页签：升级 / 科技 + 一个专属界面
+const SUBTABS = (charId) => {
+  const list = [{ id: 'upgrades', name: '升级' }, { id: 'techs', name: '科技' }];
+  if (charId === '249') list.push({ id: 'tree', name: '科技树' });
+  if (charId === 'yewei') list.push({ id: 'shop', name: '万事屋' });
+  if (charId === 'baiqi') list.push({ id: 'battle', name: '战斗' });
+  if (charId === 'heng') list.push({ id: 'abyss', name: '深渊' });
+  return list;
+};
+
+// 角色页顶部的「主要数据」
+function mainStatVM(charId) {
+  const b = engine.bonuses();
+  if (charId === '249') return { label: '奶茶产量', value: `${fmt(b.prod249)}/s` };
+  if (charId === 'yewei') return { label: '独立产线', value: `${fmt(b.lineProd)}/s` };
+  if (charId === 'baiqi') return { label: '战力', value: fmt(b.powerBaiqi) };
+  if (charId === 'heng') return { label: '战力', value: fmt(b.hengPower) };
+  return { label: '', value: '' };
+}
+
+// 万事屋：mtc 兑换 MP / PP
+function shopVM() {
+  const mpPrice = engine.shopPrice('mp');
+  const ppPrice = engine.shopPrice('pp');
+  return {
+    mp: { price: fmt(mpPrice), count: engine.s.shop.mp || 0, can: Dec.gte(engine.s.mtc, mpPrice) },
+    pp: { price: fmt(ppPrice), count: engine.s.shop.pp || 0, can: Dec.gte(engine.s.mtc, ppPrice) },
+    mpGrowth: engine.shopGrowth('mp').toFixed(3),
+    ppGrowth: engine.shopGrowth('pp').toFixed(3),
+  };
+}
+
+// 战斗：深渊总量 + 每个战斗角色的秒伤与贡献
+function battleVM() {
+  const b = engine.bonuses();
+  const total = b.dmgTotal;
+  const share = (x) => (Dec.gt(total, 0) ? `${(Dec.div(x, total).toNumber() * 100).toFixed(1)}%` : '—');
+  const rows = [];
+  if (engine.s.unlocked.includes('baiqi')) {
+    rows.push({ id: 'baiqi', name: '白琦', dps: fmt(b.dmgBaiqi), share: share(b.dmgBaiqi), speed: '1.00/s' });
+  }
+  if (engine.s.unlocked.includes('heng')) {
+    rows.push({ id: 'heng', name: '恒', dps: fmt(b.dmgHeng), share: share(b.dmgHeng), speed: `${(b.atkSpeed || 1).toFixed(2)}/s` });
+  }
+  return {
+    abyss: fmt(engine.s.S),
+    cap: fmt(Dec.pow10(tierCapLog(engine.s.tier))),
+    progress: `${(engine.progress() * 100).toFixed(1)}%`,
+    total: fmt(total),
+    rows,
+  };
+}
 
 function headerVM() {
   const s = engine.s;
@@ -290,8 +342,7 @@ function buildVM() {
       note: boardNote,
       myName: NET.name,
     };
-  } else if (activeTab === 'tree') { page.kind = 'tree'; body.treeStat = treeSummaryVM(); }
-  else if (activeTab === 'stats') { page.kind = 'stats'; Object.assign(body, statsVM()); }
+  } else if (activeTab === 'stats') { page.kind = 'stats'; Object.assign(body, statsVM()); }
   else if (activeTab === 'options') {
     page.kind = 'options';
     body.net = {
@@ -303,11 +354,22 @@ function buildVM() {
   }
   else {
     if (!engine.s.unlocked.includes(activeTab)) activeTab = '249';
+    const subtabs = SUBTABS(activeTab);
+    if (!subtabs.some((t) => t.id === activeSub)) activeSub = 'upgrades';
     page.charId = activeTab;
     page.sub = activeSub;
+    body.subtabs = subtabs;
     body.upgrades = activeSub === 'upgrades' ? upgradeListVM(activeTab) : [];
     body.techs = activeSub === 'techs' ? techListVM(activeTab) : [];
-    body.charInfo = { name: CHARACTERS[activeTab].name, title: CHARACTERS[activeTab].title, blurb: CHARACTERS[activeTab].blurb };
+    body.charInfo = {
+      name: CHARACTERS[activeTab].name,
+      title: CHARACTERS[activeTab].title,
+      blurb: CHARACTERS[activeTab].blurb,
+      main: mainStatVM(activeTab),
+    };
+    if (activeSub === 'tree') body.treeStat = treeSummaryVM();
+    if (activeSub === 'shop') body.shop = shopVM();
+    if (activeSub === 'battle') body.battle = battleVM();
   }
   return {
     header: headerVM(), tabs: TAB_DEFS(), activeTab, activeSub, page, body,
@@ -341,6 +403,11 @@ function act(action, payload) {
       if (payload === 'board') loadBoard();
       break;
     case 'sub': activeSub = payload; break;
+    case 'shopBuy': {
+      if (engine.buyShop(payload)) say(payload === 'mp' ? '兑换成功：+1 MP' : '兑换成功：+1 PP');
+      else say('mtc 不够');
+      break;
+    }
     case 'upgrade': doBuy(payload.charId, payload.index); break;
     case 'tech': engine.buyTech(payload.charId, payload.index); break;
     case 'treeBuy': {
@@ -483,7 +550,7 @@ const app = new Vue({
         if (entry) this.story = { entry, idx: 0 };
       }
       if (this.story && !engine.s.storyActive) this.story = null;
-      if (this.vm.activeTab === 'tree') this.$nextTick(() => this.syncTree());
+      if (this.vm.activeSub === 'tree' && this.vm.page.kind === 'char') this.$nextTick(() => this.syncTree());
     },
     syncTree() {
       const host = this.$refs.treeHost;
@@ -546,16 +613,19 @@ const app = new Vue({
       </div>
 
       <div class="c-subtab-button-container" v-if="vm.page.kind === 'char'">
-        <button class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.activeSub === 'upgrades' }"
-          @click="act('sub', 'upgrades')">升级</button>
-        <button class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.activeSub === 'techs' }"
-          @click="act('sub', 'techs')">科技</button>
+        <button v-for="st in vm.body.subtabs" :key="st.id"
+          class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.activeSub === st.id }"
+          @click="act('sub', st.id)">{{ st.name }}</button>
         <span class="c-hint">每次点击最多买到「下一个 10 的倍数」：36 → 40，10 → 20；买不起就尽量买</span>
       </div>
 
       <div class="l-old-ui__page l-tab-page">
         <template v-if="vm.page.kind === 'char'">
           <div class="l-section-title">{{ vm.body.charInfo.name }} · {{ vm.body.charInfo.title }}</div>
+          <div class="c-char-stat">
+            <span class="c-char-stat__label">{{ vm.body.charInfo.main.label }}</span>
+            <span class="c-char-stat__value">{{ vm.body.charInfo.main.value }}</span>
+          </div>
           <div class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
           <div v-if="vm.activeSub === 'upgrades'" class="l-upgrade-grid">
             <button v-for="item in vm.body.upgrades" :key="item.key"
@@ -572,7 +642,7 @@ const app = new Vue({
               <div v-else class="c-upgrade-btn__req">{{ item.reqText }}</div>
             </button>
           </div>
-          <div v-else class="l-upgrade-grid">
+          <div v-else-if="vm.activeSub === 'techs'" class="l-upgrade-grid">
             <button v-for="item in vm.body.techs" :key="item.key"
               class="c-upgrade-btn c-upgrade-btn--tech"
               :class="{ 'c-upgrade-btn--disabled': !item.can }"
@@ -584,21 +654,64 @@ const app = new Vue({
               <div class="c-upgrade-btn__cost">{{ item.cost }}</div>
             </button>
           </div>
-        </template>
 
-        <template v-else-if="vm.page.kind === 'tree'">
-          <div class="l-section-title">
-            科技树 <span class="c-hint">滚轮缩放 · 拖动平移 · 点击节点购买（绘制逻辑照搬 AD 的 Perks 树）</span>
-            <button class="o-primary-btn" style="margin-left:1rem" @click="act('treeFit')">重置视角</button>
-          </div>
-          <div class="c-tree-host-wrap">
-            <div ref="treeHost" class="c-tree-host"></div>
-          </div>
-          <div class="l-tree-actions">
-            <div v-for="c in vm.body.treeStat" :key="c.charId" class="c-tree-action">
-              <span>{{ c.name }} 科技树（{{ c.count }} / 9）</span>
-              <button class="o-primary-btn" @click="act('respec', { charId: c.charId })">重置并返还 AP</button>
+          <div v-else-if="vm.activeSub === 'tree'">
+            <div class="l-section-title">
+              科技树 <span class="c-hint">滚轮缩放 · 拖动平移 · 点击节点购买</span>
+              <button class="o-primary-btn" style="margin-left:1rem" @click="act('treeFit')">重置视角</button>
             </div>
+            <div class="c-tree-host-wrap">
+              <div ref="treeHost" class="c-tree-host"></div>
+            </div>
+            <div class="l-tree-actions">
+              <div v-for="c in vm.body.treeStat" :key="c.charId" class="c-tree-action">
+                <span>{{ c.name }} 科技树（{{ c.count }} / 9）</span>
+                <button class="o-primary-btn" @click="act('respec', { charId: c.charId })">重置并返还 AP</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="vm.activeSub === 'shop'" class="l-shop">
+            <div class="l-section-title">万事屋 <span class="c-hint">用 mtc 兑换资源，价格随兑换次数指数上涨</span></div>
+            <div class="l-shop-grid">
+              <div class="c-shop-card">
+                <div class="c-shop-card__head">记忆点数 <span class="c-dim-note">MP</span></div>
+                <div class="c-shop-card__price">{{ vm.body.shop.mp.price }} mtc / 1 MP</div>
+                <div class="c-dim-note">已兑换 {{ vm.body.shop.mp.count }} 次 · 增长率 ×{{ vm.body.shop.mpGrowth }}</div>
+                <button class="o-primary-btn" :disabled="!vm.body.shop.mp.can" @click="act('shopBuy', 'mp')">兑换 1 MP</button>
+              </div>
+              <div class="c-shop-card">
+                <div class="c-shop-card__head">净化点数 <span class="c-dim-note">PP</span></div>
+                <div class="c-shop-card__price">{{ vm.body.shop.pp.price }} mtc / 1 PP</div>
+                <div class="c-dim-note">已兑换 {{ vm.body.shop.pp.count }} 次 · 增长率 ×{{ vm.body.shop.ppGrowth }}</div>
+                <button class="o-primary-btn" :disabled="!vm.body.shop.pp.can" @click="act('shopBuy', 'pp')">兑换 1 PP</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="vm.activeSub === 'battle'" class="l-battle">
+            <div class="l-section-title">战斗 <span class="c-hint">深渊每秒被削减的总量</span></div>
+            <div class="c-battle-stage">
+              <div class="c-battle-abyss">深渊 {{ vm.body.battle.abyss }} / 上限 {{ vm.body.battle.cap }}</div>
+              <div class="c-battle-progress">进度 {{ vm.body.battle.progress }}</div>
+              <div class="c-battle-floats">
+                <span v-for="r in vm.body.battle.rows" :key="'f' + r.id" class="c-battle-float">−{{ r.dps }}</span>
+              </div>
+            </div>
+            <table class="c-stats-table">
+              <thead><tr><th>角色</th><th>攻速</th><th>秒伤</th><th>伤害占比</th></tr></thead>
+              <tbody>
+                <tr v-for="r in vm.body.battle.rows" :key="r.id">
+                  <td>{{ r.name }}</td><td>{{ r.speed }}</td><td>{{ r.dps }}</td><td>{{ r.share }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="c-dim-note">合计秒伤 {{ vm.body.battle.total }}</div>
+          </div>
+
+          <div v-else-if="vm.activeSub === 'abyss'" class="l-abyss-page">
+            <div class="l-section-title">深渊</div>
+            <div class="c-dim-note">尚未开放。</div>
           </div>
         </template>
 

@@ -72,11 +72,11 @@ const C249 = {
   techs: [
     { id: '249t1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
-    { id: '249t2', name: '超频', kind: 'mpByTime', cost: (l) => costOf(2, 1.4, l), maxLevel: 20,
+    { id: '249t2', name: '超频', kind: 'mpByTime', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
       desc: () => '覆灭 MP ×(1 + 0.1 × 等级 × 本轮分钟数)。' },
-    { id: '249t3', name: '增产', kind: 'ppByEarliness', cost: (l) => costOf(3, 1.3, l), maxLevel: 20,
+    { id: '249t3', name: '增产', kind: 'ppByEarliness', cost: (l) => costOf(3, 1.3, l), maxLevel: Infinity,
       desc: () => '覆灭 PP ×(1 + 0.1 × 等级 × 剩余分钟数)。' },
-    { id: '249t4', name: '蓄势', kind: 'prodByTime', cost: (l) => costOf(5, 1.35, l), maxLevel: 20,
+    { id: '249t4', name: '蓄势', kind: 'prodByTime', cost: (l) => costOf(5, 1.35, l), maxLevel: Infinity,
       desc: () => '产量 ×(1 + 0.05 × 等级 × 本轮分钟数)。' },
   ],
   tree: [
@@ -106,21 +106,21 @@ const YEWEI = {
     { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '独立产线 ×1.09/级。', mul: (l) => pow(2, l / 8) },
     { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '全体产量 ×1.15/级。', mul: (l) => pow(3, l / 8) },
     { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '独立产线 ×1.19/级。', mul: (l) => pow(4, l / 8) },
-    { id: 'ywu4', name: '共生', kind: 'line', cost: upCost(3), desc: () => '独立产线 ×1.22/级。', mul: (l) => pow(5, l / 8) },
-    { id: 'ywu5', name: '反哺', kind: 'prod249', cost: upCost(4), desc: () => '249 产量 ×1.25/级。', mul: (l) => pow(6, l / 8) },
-    { id: 'ywu6', name: '万事通', kind: 'powerAll', cost: upCost(5), desc: () => '全体战力 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'ywu4', name: '共生', kind: 'prodAll', cost: upCost(3), desc: () => '全体产量 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: 'ywu5', name: '扩张', kind: 'line', cost: upCost(4), desc: () => '独立产线 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: 'ywu6', name: '门路', kind: 'prodAll', cost: upCost(5), desc: () => '全体产量 ×1.28/级。', mul: (l) => pow(7, l / 8) },
     { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '独立产线 ×1.30/级。', mul: (l) => pow(8, l / 8) },
-    { id: 'ywu8', name: '分店', kind: 'line', cost: upCost(7), desc: () => '独立产线 ×1.32/级。', mul: (l) => pow(9, l / 8) },
+    { id: 'ywu8', name: '分店', kind: 'prodAll', cost: upCost(7), desc: () => '全体产量 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'ywt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
-    { id: 'ywt2', name: '商业谈判', kind: 'mpBuy', cost: (l) => costOf(2, 1.4, l), maxLevel: 20,
-      desc: (l) => `用 ${(10 * Math.pow(2, l)).toExponential(2)} mtc 换 ${(2 * Math.pow(1.5, l)).toFixed(1)} MP。` },
-    { id: 'ywt3', name: '离线效率', kind: 'offline', cost: (l) => costOf(3, 1.5, l), maxLevel: 20,
-      desc: (l) => `离线收益 ${Math.min(100, 50 + 10 * l)}%。` },
-    { id: 'ywt4', name: '资源转化', kind: 'ppConv', cost: (l) => costOf(5, 1.6, l), maxLevel: 20,
-      desc: (l) => `独立产线的 ${((0.3 * l) / (1 + 0.3 * l) * 100).toFixed(1)}% 转为 PP。` },
+    { id: 'ywt2', name: '商业谈判', kind: 'shopDiscount', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
+      desc: (l) => `MP 兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 1.6 * Math.pow(0.97, l)).toFixed(3)}）。` },
+    { id: 'ywt3', name: '渠道批发', kind: 'shopDiscountPP', cost: (l) => costOf(3, 1.5, l), maxLevel: Infinity,
+      desc: (l) => `PP 兑换价格增长率 ×0.97/级（下限 1.05，当前 ×${Math.max(1.05, 2.2 * Math.pow(0.97, l)).toFixed(3)}）。` },
+    { id: 'ywt4', name: '资源转化', kind: 'crossChar', cost: (l) => costOf(5, 1.6, l), maxLevel: Infinity,
+      desc: (l) => `把 249 加成的 ${((0.2 * l) / (l + 10) * 100).toFixed(1)}% 叠到独立产线，独立产线的同比例叠到 249。` },
   ],
   tree: [
     { id: 'ywa1', name: '开张', layer: 1, desc: () => '独立产线 ×(1 + 0.2 × 覆灭次数)。' },
@@ -146,23 +146,23 @@ const BAIQI = {
   unlockTier: 2,
   blurb: '使用重剑，每秒对深渊造成一次伤害。龙的血脉不自知。',
     upgrades: [
-    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '剑意增长 ×1.09/级。', rate: (l) => pow(2, l / 8) },
+    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '战力增长 ×1.09/级。', rate: (l) => pow(2, l / 8) },
     { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '战力 ×1.15/级。', mul: (l) => pow(3, l / 8) },
-    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '对深渊伤害 ×1.19/级。', mul: (l) => pow(4, l / 8) },
-    { id: 'bqu4', name: '暴击', kind: 'damage', cost: upCost(3), desc: () => '伤害 ×1.22/级。', mul: (l) => pow(5, l / 8) },
-    { id: 'bqu5', name: '逆鳞', kind: 'damage', cost: upCost(4), desc: () => '伤害 ×1.25/级。', mul: (l) => pow(6, l / 8) },
-    { id: 'bqu6', name: '真龙', kind: 'damage', cost: upCost(5), desc: () => '伤害 ×1.28/级。', mul: (l) => pow(7, l / 8) },
-    { id: 'bqu7', name: '真龙强化', kind: 'damage', cost: upCost(6), desc: () => '伤害 ×1.30/级。', mul: (l) => pow(8, l / 8) },
-    { id: 'bqu8', name: '剑心', kind: 'powerRate', cost: upCost(7), desc: () => '剑意增长 ×1.32/级。', mul: (l) => pow(9, l / 8) },
+    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '伤害 ×1.19/级。', mul: (l) => pow(4, l / 8) },
+    { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '战力增长 ×1.22/级。', mul: (l) => pow(5, l / 8) },
+    { id: 'bqu5', name: '逆鳞', kind: 'power', cost: upCost(4), desc: () => '战力 ×1.25/级。', mul: (l) => pow(6, l / 8) },
+    { id: 'bqu6', name: '斩击', kind: 'damage', cost: upCost(5), desc: () => '伤害 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'bqu7', name: '剑势', kind: 'powerRate', cost: upCost(6), desc: () => '战力增长 ×1.30/级。', mul: (l) => pow(8, l / 8) },
+    { id: 'bqu8', name: '剑魂', kind: 'power', cost: upCost(7), desc: () => '战力 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'bqt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
-    { id: 'bqt2', name: '蓄力斩', kind: 'charge', cost: (l) => costOf(2, 1.4, l), maxLevel: 20,
+    { id: 'bqt2', name: '蓄力斩', kind: 'charge', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
       desc: () => '每 3 秒蓄力，下击伤害 ×(1 + 1.5 × 等级)。' },
-    { id: 'bqt3', name: '吸血', kind: 'lifesteal', cost: (l) => costOf(3, 1.5, l), maxLevel: 20,
+    { id: 'bqt3', name: '吸血', kind: 'lifesteal', cost: (l) => costOf(3, 1.5, l), maxLevel: Infinity,
       desc: (l) => `伤害的 ${(3 * l).toFixed(0)}% 转为 mtc。` },
-    { id: 'bqt4', name: '斩杀', kind: 'execute', cost: (l) => costOf(5, 1.6, l), maxLevel: 20,
+    { id: 'bqt4', name: '斩杀', kind: 'execute', cost: (l) => costOf(5, 1.6, l), maxLevel: Infinity,
       desc: (l) => `深渊进度 < ${(10 + 4 * l).toFixed(0)}% 时伤害 ×(1 + 等级)^2。` },
   ],
   tree: [
@@ -190,22 +190,22 @@ const HENG = {
   blurb: '力量与深渊同源：深渊越强，他越强。',
     upgrades: [
     { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '战力 ×1.09/级。', mul: (l) => pow(2, l / 8) },
-    { id: 'hgu2', name: '同源', kind: 'power', cost: upCost(1), desc: () => '战力 ×1.15/级。', mul: (l) => pow(3, l / 8) },
+    { id: 'hgu2', name: '同源', kind: 'alpha', cost: upCost(1), desc: () => '深渊转化 +0.005/级（上限 0.5）。', maxLevel: Infinity, add: (l) => Math.min(0.5, 0.005 * l) },
     { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '攻速 ×1.19/级。', mul: (l) => pow(4, l / 8) },
     { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '伤害 ×1.22/级。', mul: (l) => pow(5, l / 8) },
     { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '战力 ×1.25/级。', mul: (l) => pow(6, l / 8) },
-    { id: 'hgu6', name: '战力核心', kind: 'power', cost: upCost(5), desc: () => '战力 ×1.28/级。', mul: (l) => pow(7, l / 8) },
+    { id: 'hgu6', name: '转化核心', kind: 'alpha', cost: upCost(5), desc: () => '深渊转化 ×1.28/级。', mul: (l) => pow(7, l / 8) },
     { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '攻速 ×1.30/级。', mul: (l) => pow(8, l / 8) },
     { id: 'hgu8', name: '同源核心', kind: 'damage', cost: upCost(7), desc: () => '伤害 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
     { id: 'hgt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
       desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
-    { id: 'hgt2', name: '共鸣爆发', kind: 'burst', cost: (l) => costOf(2, 1.4, l), maxLevel: 20,
+    { id: 'hgt2', name: '共鸣爆发', kind: 'burst', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
       desc: () => '每 60 秒爆发一次，α ×(1 + 等级)。' },
-    { id: 'hgt3', name: '爆发冷却', kind: 'burstCD', cost: (l) => costOf(3, 1.5, l), maxLevel: 20,
+    { id: 'hgt3', name: '爆发冷却', kind: 'burstCD', cost: (l) => costOf(3, 1.5, l), maxLevel: Infinity,
       desc: () => '爆发冷却 ×0.9/级。' },
-    { id: 'hgt4', name: '爆发强化', kind: 'burstPower', cost: (l) => costOf(5, 1.6, l), maxLevel: 20,
+    { id: 'hgt4', name: '爆发强化', kind: 'burstPower', cost: (l) => costOf(5, 1.6, l), maxLevel: Infinity,
       desc: () => '爆发期间伤害 ×(1 + 等级)。' },
   ],
   tree: [
@@ -224,7 +224,14 @@ const HENG = {
 // ─────────────────────────────────────────────
 // 通用树：13 节点 = 1 中心（6 级自动化）+ 4 主干 + 8 叶子
 // ─────────────────────────────────────────────
-export const AUTO_CENTER_MAX = 6;
+// 万事屋：用 mtc 兑换 MP / PP，价格随兑换次数指数增长
+export const SHOP = {
+  mp: { base: 10, growth: 1.6, amount: 1 },
+  pp: { base: 25, growth: 2.2, amount: 1 },
+};
+
+export const AUTO_CENTER_MAX = 65;   // 1–6 解锁功能，7–65 压缩间隔（0.95^59 ≈ 0.05 秒）
+export const AUTO_CENTER_FUNCS = 6;
 const CENTER_STEPS = [
   '自动结算覆灭。',
   '自动结算净化。',
@@ -236,7 +243,7 @@ const CENTER_STEPS = [
 
 export const GENERIC_TREE = [
   { id: 'g7', name: '自动化中枢', layer: 0, slot: 'center', repeat: true, cap: AUTO_CENTER_MAX,
-    cost: (l) => costOf(4, 2, l), desc: (l) => CENTER_STEPS[l] || '六级已满。' },
+    cost: (l) => costOf(1, 2, l), desc: (l) => CENTER_STEPS[l] || `自动间隔 ×0.95/级（当前 ${(1.0 * Math.pow(0.95, Math.max(0, l - 6))).toFixed(3)} 秒）。` },
 
   { id: 'g8', name: '奶茶翻倍', layer: 1, slot: 'trunk', angle: 45, parent: 'g7', repeat: true,
     cost: (l) => costOf(5, 4.9, l), desc: (l) => `产量 ×2/级，当前 ×${Math.pow(2, l)}。` },

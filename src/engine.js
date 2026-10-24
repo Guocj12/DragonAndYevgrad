@@ -4,7 +4,7 @@
 // 深渊 tick、角色系统、剧情系统是本作自有逻辑。
 
 import { Dec, D, formatScientific } from './num.js';
-import { CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, TUNING, costOf, treeLayerCost } from './db.js';
+import { CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, SHOP, TUNING, costOf, treeLayerCost } from './db.js';
 import { STORY } from './story.js';
 
 export const STATE_VERSION = 1;
@@ -66,6 +66,7 @@ export function createInitialState() {
     storySeen: [],          // 已播放过的剧情 id
     storyActive: false,     // 正在播放剧情（暂停的一种）
     settings: { skipReadStories: false },   // 设置：跳过已读剧情
+    shop: { mp: 0, pp: 0 },                 // 万事屋：已兑换次数（价格随次数指数上涨）
   };
   for (const id of CHARACTER_ORDER) {
     s.chars[id] = {
@@ -104,6 +105,7 @@ export function deserialize(text) {
   }
   merged.stats = Object.assign(base.stats, raw.stats || {});
   merged.settings = Object.assign({}, base.settings, raw.settings || {});
+  merged.shop = Object.assign({}, base.shop, raw.shop || {});
   return merged;
 }
 
@@ -297,12 +299,13 @@ export class Engine {
     const prod249Extra = new Mult('prod249');
     const powerAll = new Mult('powerAll');
     const mtcGain = new Mult('mtc');
-    let ppConv = 0;
+    let crossChar = 0;
     if (this.isUnlocked('yewei')) {
       const c = s.chars.yewei;
       const def = CHARACTERS.yewei;
       const l1 = c.upgrades[0];
-      line.addBase(prod249Base.mul(0.004));
+      // 刚解锁时独立产线 = 249 的产量（0 级贡献与 249 持平）
+      line.addBase(prod249Base);
       if (l1 > 0) line.mul(def.upgrades[0].mul(l1, ctx), def.upgrades[0].id, def.upgrades[0].name);
       for (let i = 1; i < def.upgrades.length; i++) {
         const u = def.upgrades[i];
@@ -314,7 +317,7 @@ export class Engine {
         else if (u.kind === 'powerAll') powerAll.mul(u.mul(lv, ctx), u.id, u.name);
       }
       const t4 = c.techs[3];
-      if (t4 > 0) ppConv = (0.3 * t4) / (1 + 0.3 * t4);
+      if (t4 > 0) crossChar = (0.2 * t4) / (t4 + 10);
       const nt = ctx.nTree.yewei;
       for (const node of def.tree) {
         if (!c.tree[node.id]) continue;
@@ -334,6 +337,10 @@ export class Engine {
           }
           default: break;
         }
+      }
+      if (crossChar > 0) {
+        line.mul(d(1 + crossChar * Math.max(0, Dec.log10(Dec.max(prod249.value(), 1)))), 'ywt4a', '资源转化·249→万事屋');
+        prod249Extra.mul(d(1 + crossChar * Math.max(0, Dec.log10(Dec.max(line.value(), 1)))), 'ywt4b', '资源转化·万事屋→249');
       }
     }
     const prod249Final = prod249.value().mul(prod249Extra.value());
@@ -394,7 +401,8 @@ export class Engine {
     const dragonFactor = dragonLayers > 0 ? Dec.pow(10, dragonLayers * dragonMul) : Dec.one();
     critRate = Math.min(1, critRate);
     s.caches.rateBaiqi = rateBq.value();
-    const stockBq = d(s.caches.baiqiStock || 0).add(rateBq.value().mul(0)); // 存量在 tick 中累加
+    // 刚解锁时给一份基础剑意，使 0 级白琦的秒伤与 249 的净化量同量级；之后靠 tick 累积
+    const stockBq = d(s.caches.baiqiStock || 0).add(prod249Base.mul(10));
     const powerBqVal = stockBq.mul(powerBq.value());
     const dmgBqVal = powerBqVal.mul(0.1).mul(d(1 + critRate * (1 + critDmg))).mul(dragonFactor).mul(dmgBq.value());
 
@@ -446,7 +454,9 @@ export class Engine {
       atkSpeed = atkMul.value().toNumber();
       const alpha = Math.min(TUNING.alphaCap, (0.25 + alphaAdd) * alphaMul * Math.min(2, burstAlpha));
       const ratio = Dec.div(Dec.max(s.S, d(1e-300)), Dec.pow10(ctx.y0));
-      hengPower = Dec.mul(d(10), Dec.pow(Dec.max(ratio, d(1e-12)), alpha)).mul(powerMul.value());
+      const lgRatio = Math.max(0, Dec.log10(ratio));
+      // 深渊越强恒越强，但用对数幂次，避免直接指数化把平衡冲掉
+      hengPower = prod249Base.mul(d(10 * Math.pow(1 + lgRatio, 1 + 2 * alpha))).mul(powerMul.value());
       let eff = hengPower.mul(0.1).mul(dmgMul.value());
       if (atkSpeed > 20) eff = eff.mul(d(atkSpeed / 20));
       if (c.tree['hga6']) {
@@ -492,7 +502,7 @@ export class Engine {
       centerLv,
       lastStand,
       lifesteal,
-      ppConv,
+      crossChar,
       dragonLayers,
       magicTree: 0,
       contrib: {
@@ -541,11 +551,6 @@ export class Engine {
         const cap = b.prodTotal.mul(dt * 0.5);
         const add = Dec.min(b.dmgTotal.mul(b.lifesteal * dt), cap);
         s.mtc = s.mtc.add(add);
-      }
-      if (b.ppConv > 0 && Dec.gt(b.lineProd, 1)) {
-        // 资源转化：按对数软上限把独立产线转成 PP（避免直接线性搬运爆表）
-        const lp = Dec.log10(b.lineProd);
-        s.pp = intRound(s.pp.add(d(b.ppConv * Math.log10(1 + Math.max(0, lp)) * dt * 2)));
       }
     }
     if (Dec.lte(s.S, 0)) {
@@ -602,6 +607,33 @@ export class Engine {
     return n;
   }
 
+  // ── 万事屋：mtc 兑换 MP / PP ──
+  // 价格 = base × growth^n（n = 已兑换次数）；商业谈判 / 渠道批发 降低 growth，下限 1.05
+  shopGrowth(kind) {
+    const s = this.s;
+    const cfg = kind === 'mp' ? SHOP.mp : SHOP.pp;
+    const lv = this.isUnlocked('yewei') ? s.chars.yewei.techs[kind === 'mp' ? 1 : 2] : 0;
+    return Math.max(1.05, cfg.growth * Math.pow(0.97, lv));
+  }
+
+  shopPrice(kind) {
+    const cfg = kind === 'mp' ? SHOP.mp : SHOP.pp;
+    const n = (this.s.shop && this.s.shop[kind]) || 0;
+    return Dec.mul(d(cfg.base), Dec.pow(this.shopGrowth(kind), n));
+  }
+
+  buyShop(kind) {
+    const s = this.s;
+    const price = this.shopPrice(kind);
+    if (Dec.lt(s.mtc, price)) return false;
+    s.mtc = s.mtc.sub(price);
+    if (!s.shop) s.shop = { mp: 0, pp: 0 };
+    s.shop[kind] = (s.shop[kind] || 0) + 1;
+    if (kind === 'mp') s.mp = intRound(s.mp.add(1));
+    else s.pp = intRound(s.pp.add(1));
+    return true;
+  }
+
   // ── 购买 ──
   // AD 同款：每买满 10 级，成本倍率本身翻一倍（cost = base × (mult × 2^⌊L/10⌋)^L）
   groupCostMult(level) {
@@ -651,8 +683,7 @@ export class Engine {
     const ctx = this.bonuses().ctx;
     if (def.kind === 'auto') return lv <= 0 ? '未解锁' : lv <= 8 ? `自动买 1–${lv}` : `间隔 ×0.9^${lv - 8}`;
     if (def.kind === 'mpBuy') return `换 ${(2 * Math.pow(1.5, lv)).toFixed(1)} MP`;
-    if (def.kind === 'offline') return `离线 ${Math.min(100, 50 + 10 * lv)}%`;
-    if (def.kind === 'ppConv') return `转化 ${((0.3 * lv) / (1 + 0.3 * lv)).toFixed(3)}`;
+    if (def.kind === 'crossChar') return `互转 ${((0.2 * lv) / (lv + 10)).toFixed(3)}`;
     if (def.kind === 'charge') return `下一击 ×${(1 + 1.5 * lv).toFixed(2)}`;
     if (def.kind === 'lifesteal') return `吸血 ${(3 * lv).toFixed(0)}%`;
     if (def.kind === 'execute') return `斩杀 ×${Math.pow(1 + lv, 2).toFixed(1)}`;
@@ -682,8 +713,7 @@ export class Engine {
       return lv <= 0 ? '未解锁' : lv <= 8 ? `自动买 1–${lv}` : `间隔 ×0.9^${lv - 8}`;
     }
     if (def.kind === 'mpBuy') return `换 ${(2 * Math.pow(1.5, lv)).toFixed(1)} MP`;
-    if (def.kind === 'offline') return `离线 ${Math.min(100, 50 + 10 * lv)}%`;
-    if (def.kind === 'ppConv') return `转化 ${((0.3 * lv) / (1 + 0.3 * lv)).toFixed(3)}`;
+    if (def.kind === 'crossChar') return `互转 ${((0.2 * lv) / (lv + 10)).toFixed(3)}`;
     if (def.kind === 'line') return `独立产线 ${(0.4 * lv).toFixed(1)}%`;
     if (def.rate) return `×${fmtSmall(def.rate(lv))}/s`;
     if (def.mul) return `×${fmtSmall(def.mul(lv, ctx))}`;
@@ -833,8 +863,10 @@ export class Engine {
     const lv = s.generic.g7 || 0;
     if (lv < 3) return;
     const order = ['g8', 'g10', 'g11', 'g9'];
+    // 7 级起压缩自动间隔：0.5s × 0.95^(lv-6)，下限 0.05s
+    const interval = lv >= 7 ? Math.max(0.05, 0.5 * Math.pow(0.95, lv - 6)) : 0.5;
     s.caches.trunkTimer = (s.caches.trunkTimer || 0) + dt;
-    if (s.caches.trunkTimer < 0.5) return;
+    if (s.caches.trunkTimer < interval) return;
     s.caches.trunkTimer = 0;
     for (let i = 0; i < Math.min(lv - 2, 4); i++) this.buyGeneric(order[i]);
   }
