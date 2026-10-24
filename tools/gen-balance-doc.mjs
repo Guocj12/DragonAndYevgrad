@@ -59,7 +59,7 @@ push('');
 push(`- 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9（\`UP_COST_MULT(i) = i + 2\`）`);
 push('- 基础价：全部为 1');
 push('- 每级效果：成本倍率的 1/8 次方（2^1/8=1.09 … 9^1/8=1.32）');
-push(`- 解锁链：前一个升级达到 10 / 20 / 30 / 40 / 50 / 60 / 70 级（\`REQ_LEVELS = [${REQ_LEVELS.join(', ')}]\`）`);
+push(`- 解锁链：前一个升级达到 10 级（\`REQ_LEVELS = [${REQ_LEVELS.join(', ')}]\`）`);
 push('');
 
 for (const id of CHARACTER_ORDER) {
