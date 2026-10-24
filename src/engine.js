@@ -274,7 +274,7 @@ export class Engine {
       const upBoost = new Array(def.upgrades.length).fill(1);
       for (let bi = 0; bi < def.techs.length; bi++) {
         const bt = def.techs[bi];
-        if (bt.kind !== 'upBoost') continue;
+        if (bt.kind !== 'upBoost' || !TUNING.boostEnabled) continue;
         const blv = c.techs[bi] || 0;
         if (blv > 0) { const f = Math.pow(2, blv); if (bt.all) { for (let ui = 0; ui < upBoost.length; ui++) upBoost[ui] *= f; } else { upBoost[bt.pair[0]] *= f; upBoost[bt.pair[1]] *= f; } }
       }
