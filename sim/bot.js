@@ -72,10 +72,10 @@ function buyLoop(engine, mode) {
 }
 
 const TECH_PRIORITY = {
-  '249': [0, 2, 3, 1],
-  yewei: [0, 1, 3, 2],
-  baiqi: [0, 2, 3, 1],
-  heng: [0, 2, 3, 1],
+  '249': [0, 2, 3, 1, 4, 5, 6, 7],
+  yewei: [0, 1, 3, 2, 4, 5, 6, 7],
+  baiqi: [0, 2, 3, 1, 4, 5, 6, 7],
+  heng: [0, 2, 3, 1, 4, 5, 6, 7],
 };
 
 const GENERIC_ORDER = ['g7', 'g8', 'g10', 'g11', 'g9', 'g1', 'g2', 'g3', 'g12', 'g6', 'g5', 'g4', 'g13'];
