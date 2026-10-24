@@ -994,6 +994,19 @@ export class Engine {
     return out;
   }
 
+  // 待结算面板的「预计获得」，必须和 resolvePending 用同一套取整
+  previewPendingReward() {
+    const s = this.s;
+    if (!s.pending) return null;
+    const b = this.bonuses();
+    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(s.run.bestPurify * TUNING.mpPurifyFactor));
+    const mp = intRound(Dec.mul(base, b.mpGain));
+    const pp = s.pending === 'guard'
+      ? intRound(Dec.mul(TUNING.ppPerGuard * (s.tier + 1), 1).mul(b.ppGain))
+      : Dec.zero();
+    return { mp, pp };
+  }
+
   // ── 剧情 ──
   // 当前深渊进度（对数口径，0 = 开局，1 = 上限）
   progress() {

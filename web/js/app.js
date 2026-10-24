@@ -539,15 +539,11 @@ const app = new Vue({
         : '点击「覆灭结算」：获得记忆点数，回到奶茶店；升级清空，科技与科技树保留。';
     },
     pendingReward() {
-      if (!engine.s.pending) return '';
-      const b = engine.bonuses();
-      const base = Dec.add(TUNING.mpPerCollapse, Math.floor(engine.s.run.bestPurify * TUNING.mpPurifyFactor));
-      const mp = Math.floor(Dec.mul(base, b.mpGain).toNumber());
-      if (engine.s.pending === 'guard') {
-        const pp = Math.floor(Dec.mul(TUNING.ppPerGuard * (engine.s.tier + 1), 1).mul(b.ppGain).toNumber());
-        return `预计获得：记忆点数 +${mp}，净化点数 +${pp}`;
-      }
-      return `预计获得：记忆点数 +${mp}`;
+      const r = engine.previewPendingReward();
+      if (!r) return '';
+      const parts = [`记忆点数 +${fmt(r.mp)}`];
+      if (Dec.gt(r.pp, 0)) parts.push(`净化点数 +${fmt(r.pp)}`);
+      return `预计获得：${parts.join('，')}`;
     },
   },
   methods: {
