@@ -178,8 +178,9 @@ const SUBTABS = (charId) => {
 // 角色页顶部的「主要数据」
 function mainStatVM(charId) {
   const b = engine.bonuses();
-  if (charId === '249') return { label: '奶茶产量', value: `${fmt(b.prod249)}/s` };
-  if (charId === 'yewei') return { label: '独立产线', value: `${fmt(b.lineProd)}/s` };
+  // 与顶部状态栏保持同一口径：都是总产量（含记忆累积等全局乘区）
+  if (charId === '249') return { label: '奶茶产量', value: `${fmt(b.prodTotal)}/s` };
+  if (charId === 'yewei') return { label: '奶茶产量', value: `${fmt(b.prodTotal)}/s` };
   if (charId === 'baiqi') return { label: '战力', value: fmt(b.powerBaiqi) };
   if (charId === 'heng') return { label: '战力', value: fmt(b.hengPower) };
   return { label: '', value: '' };
