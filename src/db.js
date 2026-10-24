@@ -67,12 +67,13 @@ const upCostMult = (i) => UP_COST_MULT(i);
 // 价格也是幂：1 + 0.5·l^2.5（幂次高于效果的 l^1.5，所以越买越贵、自然收敛，但不会一买就卡死）
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
-const UP_KAPPA = envNum('DNY_K', 1.0003);         // 每级效果的额外指数（>1 时产量在轮内加速）
+const UP_KAPPA = envNum('DNY_K', 2);             // 每级效果倍率（指数）
+const UP_COST_BASE = envNum('DNY_CB', 2);        // 每级价格倍率（>效果倍率 → 买级有上限）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃
 const PRICE_PER_LEVEL = envNum('DNY_PPL', 10);
-const upCost = (i) => (l) => Dec.mul(upBase(i), d(((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) / PRICE_PER_LEVEL));
+const upCost = (i) => (l) => Dec.mul(upBase(i), Dec.pow(UP_COST_BASE, l));
 
 // ─────────────────────────────────────────────
 // 249
@@ -85,13 +86,13 @@ const C249 = {
   unlockTier: 0,
   blurb: '不会记得每次轮回，数据库里却有每一轮的记录。',
     upgrades: [
-    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
+    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
     { id: '249u8', name: '产线总控', kind: 'prod', cost: upCost(7), desc: () => '产量 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
@@ -128,13 +129,13 @@ const YEWEI = {
   unlockTier: 1,
   blurb: '可以独立生产奶茶，也会为其他角色提供强力辅助。',
     upgrades: [
-    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu4', name: '共生', kind: 'prodAll', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu5', name: '扩张', kind: 'line', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu6', name: '门路', kind: 'prodAll', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
+    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu4', name: '共生', kind: 'prodAll', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu5', name: '扩张', kind: 'line', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu6', name: '门路', kind: 'prodAll', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
     { id: 'ywu8', name: '分店', kind: 'prodAll', cost: upCost(7), desc: () => '全体产量 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
@@ -171,13 +172,13 @@ const BAIQI = {
   unlockTier: 2,
   blurb: '使用重剑，每秒对深渊造成一次伤害。龙的血脉不自知。',
     upgrades: [
-    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', rate: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu5', name: '逆鳞', kind: 'power', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu6', name: '斩击', kind: 'damage', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'bqu7', name: '剑势', kind: 'powerRate', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
+    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', rate: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu5', name: '逆鳞', kind: 'power', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu6', name: '斩击', kind: 'damage', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'bqu7', name: '剑势', kind: 'powerRate', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
     { id: 'bqu8', name: '剑魂', kind: 'power', cost: upCost(7), desc: () => '战力 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
@@ -214,13 +215,13 @@ const HENG = {
   unlockTier: 3,
   blurb: '力量与深渊同源：深渊越强，他越强。',
     upgrades: [
-    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
+    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
     { id: 'hgu2', name: '同源', kind: 'alpha', cost: upCost(1), desc: () => '深渊转化 +0.005/级（上限 0.5）。', maxLevel: Infinity, add: (l) => Math.min(0.5, 0.005 * l) },
-    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'hgu6', name: '转化核心', kind: 'alpha', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
-    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => d((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) },
+    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'hgu6', name: '转化核心', kind: 'alpha', cost: upCost(5), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
+    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '产量 ×(1 + 系数 × 等级^幂次)。', mul: (l) => Dec.pow(UP_KAPPA, l / 8) },
     { id: 'hgu8', name: '同源核心', kind: 'damage', cost: upCost(7), desc: () => '伤害 ×1.32/级。', mul: (l) => pow(9, l / 8) },
   ],
   techs: [
