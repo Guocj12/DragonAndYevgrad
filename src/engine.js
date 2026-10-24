@@ -1235,10 +1235,8 @@ export class Engine {
     // 深渊起点：取「本档固定起点」与「玩家进档时产量 × 10^gap」的较大者，
     // 这样进新档时深渊总比玩家强一点点，靠轮内加速去追，而不是一跳 100 个数量级。
     this.b = null;
-    // 起点 = 本档上限的 50% × (1 - 每覆灭一次推进的进度)：跨轮把深渊真正往前推
-    const tc = (s.stats.tierCollapses && s.stats.tierCollapses[tier]) || 0;
-    const pushed = Math.max(0, 1 - TUNING.collapseProgress * tc);
-    s.S = Dec.pow10(tierCapLog(tier) * 0.5 * pushed * Math.pow(0.9, s.generic['g6'] || 0));
+    // 起点固定为本档上限的一半（与覆灭次数无关）：每轮起跑线相同，玩家变强才会净化得更多
+    s.S = Dec.pow10(tierCapLog(tier) * 0.5 * Math.pow(0.9, s.generic['g6'] || 0));
   }
 
   // ── 贡献面板 ──
