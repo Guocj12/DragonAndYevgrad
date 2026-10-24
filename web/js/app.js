@@ -570,6 +570,20 @@ const app = new Vue({
     },
     act,
     go(id) { act('tab', id); },
+    // 手动生产：按下立即 1 次，长按以每秒 20 次持续
+    startProduce() {
+      if (producing) return;
+      producing = true;
+      produceAcc = 0;
+      engine.clickProduce();   // 按下立即生产一次
+      app.render();
+    },
+    stopProduce() {
+      if (!producing) return;
+      producing = false;
+      say(`生产了 ${fmt(engine.bonuses().prodTotal)} 杯/次 × 20 次/秒`);
+      app.render();
+    },
     buy(item) {
       if (item.kind === 'upgrade') act('upgrade', item);
       else act('tech', item);
@@ -639,8 +653,12 @@ const app = new Vue({
           </div>
           <div class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
           <div v-if="vm.activeTab === '249' && vm.activeSub === 'upgrades'" class="l-produce-row">
-            <button class="o-primary-btn" @click="act('produce')">生产奶茶（+{{ vm.header.prod }}）</button>
-            <span class="c-dim-note">点一下 = 1 秒的产量，随产量倍率一起提高</span>
+            <button class="o-primary-btn c-produce-btn"
+              @mousedown.prevent="startProduce" @mouseup="stopProduce" @mouseleave="stopProduce"
+              @touchstart.prevent="startProduce" @touchend="stopProduce" @touchcancel="stopProduce">
+              生产奶茶（+{{ vm.header.prod }}）
+            </button>
+            <span class="c-dim-note">点一下 = 1 秒的产量；按住不放 = 每秒 20 次</span>
           </div>
           <div v-if="vm.activeSub === 'upgrades'" class="l-upgrade-grid">
             <button v-for="item in vm.body.upgrades" :key="item.key"
@@ -872,6 +890,8 @@ const app = new Vue({
 // ───────────────────────────── 主循环 ─────────────────────────────
 const DT = TUNING.tickSeconds;
 let acc = 0;
+let producing = false;   // 长按生产
+let produceAcc = 0;      // 生产累计时间（每 0.05s 生产一次）
 let last = performance.now();
 let lastSave = Date.now();
 let uiTimer = 0;
@@ -886,6 +906,12 @@ function frame(now) {
   } else {
     acc = 0;
   }
+  // 长按生产：按 dt 累积，每 0.05 秒生产一次（= 每秒 20 次），与帧率无关
+  if (producing) {
+    produceAcc += dt;
+    while (produceAcc >= DT) { produceAcc -= DT; engine.clickProduce(); }
+  }
+
   uiTimer += dt;
   if (uiTimer > 0.12) { uiTimer = 0; app.render(); }
   if (Date.now() - lastSave > 10000) { saveGame(); lastSave = Date.now(); }

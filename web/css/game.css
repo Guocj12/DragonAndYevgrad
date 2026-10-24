@@ -677,3 +677,4 @@ body {
 .c-battle-floats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.8rem; }
 .c-battle-float { font-size: 1.3rem; color: var(--color-bad); }
 .l-produce-row { display: flex; align-items: center; gap: 1rem; margin: 0.6rem 0 1rem; }
+.c-produce-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
