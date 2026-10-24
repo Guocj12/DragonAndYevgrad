@@ -615,7 +615,7 @@ export class Engine {
         s.caches.abyssCutTimer -= 60;
         const yS = Dec.log10(s.S);
         const y0 = b.ctx.y0;
-        if (yS > y0) s.S = Dec.pow10(yS - 0.08 * (yS - y0));
+        if (yS > y0) s.S = Dec.pow10(yS - TUNING.dragonCut * (yS - y0));
       }
     }
 
