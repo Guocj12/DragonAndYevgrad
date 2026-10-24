@@ -373,6 +373,15 @@ export class Engine {
     if (singularity) prodTotal = prodTotal.add(Dec.pow(Dec.max(s.mtc, 1), 0.5));
     // 通用乘区（奶茶翻倍、共鸣等）作用在全体产量上
     prodTotal = prodTotal.mul(genericProd.value()).mul(achMul);
+    // ── 目标锁定 ──
+    // 每档第 N 轮（N = 本档覆灭次数 + 1）的总输出对数 = 0.1 × N × 本档上限对数 / 2
+    // 这样净化率严格是 10% → 20% → … → 100%，与玩家买了多少级无关（买级决定的是各项的相对占比）
+    {
+      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
+      const targetLog = 0.1 * n * tierCapLog(s.tier) / 2;
+      const curLog = Dec.log10(Dec.max(prodTotal, 1));
+      if (isFinite(curLog) && curLog > 0) prodTotal = Dec.pow10(targetLog);
+    }
 
     // ── 白琦 ──
     const powerBq = new Mult('power');
