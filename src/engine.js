@@ -1065,11 +1065,15 @@ export class Engine {
     const s = this.s;
     const tier = s.tier;
     const countOf = (ev) => (ev === 'guard' ? s.stats.tierGuards[tier] + 1 : s.stats.tierCollapses[tier] + 1);
+    // 全局次数（覆灭次数 / 守护次数），供 minCount / maxCount 用
+    const totalOf = (ev) => (ev === 'guard' ? (s.stats.guards || 0) : (s.stats.collapses || 0));
     for (const entry of STORY) {
       const t = entry.trigger;
       if (t.type !== event) continue;
       if (t.tier !== undefined && t.tier !== tier) continue;
       if (t.count !== undefined && t.count !== countOf(event)) continue;
+      if (t.minCount !== undefined && totalOf(event) < t.minCount) continue;
+      if (t.maxCount !== undefined && totalOf(event) > t.maxCount) continue;
       if (!this.canPlayStory(entry)) continue;
       this.pushStory(entry);
     }

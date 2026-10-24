@@ -10,9 +10,10 @@
 //
 // ── 触发方式（trigger）─────────────────────────────────────────
 //   { type: 'restart' }                       进店 / 每次覆灭后重开
-//   { type: 'restart', count: 1 }             第 1 次覆灭后的重开
+//   { type: 'restart', count: 1 }             第 1 次覆灭后的重开；onlyIfSeen: 'id' 表示该条目已读才播
 //   { type: 'guard',    tier?: x, count?: y } 在档 x 的第 y 次守护
 //   { type: 'collapse', tier?: x, count?: y } 在档 x 的第 y 次覆灭
+//   { type: 'collapse', minCount: 10 }        全局覆灭次数 >= 10（也可用 maxCount 设上限）
 //   { type: 'win' }                           最高档净化成功
 //   { type: 'cond', when: {...} }             条件型，每 0.5s 轮询一次（详见引擎 condMet）
 //     when.at: 'tier' | 'mtc' | 'cycles' | 'guards' | 'time' | 'ap' | 'prog'
@@ -66,7 +67,7 @@ export const STORY = [
       { speaker: '', text: '（可以在设置里跳过已读过的剧情）' },
       { speaker: '249', text: '店长您回来了~\n奶茶产线还在正常工作' },
       { speaker: '249', text: '要尽快提高奶茶产量来净化深渊了' },
-      { speaker: '249', text: '...明明什么都记不住，做奶茶的手感好像更熟练了' },
+      { speaker: '249', text: '似乎奶茶做得更熟练了...是我的错觉吗' },
     ],
   },
   // ── 第一次覆灭后的重开（只播一次）──
@@ -82,14 +83,50 @@ export const STORY = [
       { speaker: '249', text: '不管了，还是先继续生产奶茶要紧' },
     ],
   },
-  // ── 覆灭（每次）──
+  // ── 覆灭（每次；按覆灭次数换文本：10 / 20 / 30 / 40 次后各换一次）──
   {
     id: 'collapse',
-    trigger: { type: 'collapse' },
+    trigger: { type: 'collapse', maxCount: 9 },
     repeat: true,
     mode: 'fullscreen',
     lines: [
       '深渊吞噬了耶维城',
+    ],
+  },
+  {
+    id: 'collapse-again',
+    trigger: { type: 'collapse', minCount: 10, maxCount: 19 },
+    repeat: true,
+    mode: 'fullscreen',
+    lines: [
+      '深渊又吞噬了耶维城',
+    ],
+  },
+  {
+    id: 'collapse-again-2',
+    trigger: { type: 'collapse', minCount: 20, maxCount: 29 },
+    repeat: true,
+    mode: 'fullscreen',
+    lines: [
+      '深渊又一次吞噬了耶维城',
+    ],
+  },
+  {
+    id: 'collapse-again-3',
+    trigger: { type: 'collapse', minCount: 30, maxCount: 39 },
+    repeat: true,
+    mode: 'fullscreen',
+    lines: [
+      '深渊再次吞噬了耶维城',
+    ],
+  },
+  {
+    id: 'collapse-again-4',
+    trigger: { type: 'collapse', minCount: 40 },
+    repeat: true,
+    mode: 'fullscreen',
+    lines: [
+      '深渊吞噬了耶维城...',
     ],
   },
   // ── 第一次净化（档 0 首次守护）──

@@ -201,6 +201,34 @@ ok((await storyText()) === '深渊吞噬了耶维城', `剧情文本：${await s
 await flush();
 ok(!(await isStory()), '清空剧情队列');
 
+// ── 7. 覆灭文本按次数递进（10 / 20 / 30 / 40 次后各换一次）──
+console.log('\n[7] 覆灭文本递进');
+const collapseCases = [
+  [9, '深渊吞噬了耶维城'],
+  [10, '深渊又吞噬了耶维城'],
+  [20, '深渊又一次吞噬了耶维城'],
+  [30, '深渊再次吞噬了耶维城'],
+  [40, '深渊吞噬了耶维城...'],
+];
+for (const [n, expect] of collapseCases) {
+  await page.evaluate((cnt) => {
+    const e = window.__dny.engine();
+    e.s.pending = null;
+    e.s.storyQueue.length = 0;
+    e.s.storyActive = false;
+    e.s.paused = false;
+    e.s.stats.collapses = cnt;
+    e.s.S = e.s.S.constructor.from('1e999999');
+    e.tick(0.5);
+    window.__dny.render();
+  }, n);
+  await page.waitForTimeout(320);
+  ok(await isStory(), `覆灭第 ${n + 1} 次触发剧情`);
+  ok((await storyText()) === expect, `已覆灭 ${n} 次 → ${await storyText()}`);
+  await flush();
+}
+ok(!(await isStory()), '点完消失');
+
 await browser.close();
 console.log(`\n控制台问题：${problems.length}`);
 console.log('\n================ 结果 ================');
