@@ -239,7 +239,7 @@ export class Engine {
 
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
-    genericProd.mul(Dec.pow(TUNING.memoryBase, s.stats.collapses), 'memory', `记忆累积（覆灭 ${s.stats.collapses} 次）`);
+    genericProd.mul(Dec.pow(TUNING.memoryBase, s.stats.cycles), 'memory', `记忆累积（第 ${s.stats.cycles} 轮）`);
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
     let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
@@ -1235,10 +1235,8 @@ export class Engine {
     // 深渊起点：取「本档固定起点」与「玩家进档时产量 × 10^gap」的较大者，
     // 这样进新档时深渊总比玩家强一点点，靠轮内加速去追，而不是一跳 100 个数量级。
     this.b = null;
-    // 起点 = max(本档上限的一半, 玩家上一轮峰值 + startGap)：每档至少隔着半个跨度，保证刚进档打不过
-    const halfCap = tierCapLog(tier) * 0.5;
-    const pLog = Dec.log10(Dec.max(prevPeak, 1)) + TUNING.startGap;
-    s.S = Dec.pow10(Math.min(tierCapLog(tier) - 1, Math.max(halfCap, pLog)) * Math.pow(0.9, s.generic['g6'] || 0));
+    // 起点固定为本档上限的 50%：每轮起跑线相同，玩家变强 → 净化率单调上升
+    s.S = Dec.pow10(tierCapLog(tier) * 0.5 * Math.pow(0.9, s.generic['g6'] || 0));
   }
 
   // ── 贡献面板 ──
