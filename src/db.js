@@ -18,10 +18,11 @@ export const TUNING = {
   fillSeconds: 249,
   tau: 249 / Math.LN2,
   // 每档的深渊时间尺度：越往后越慢（单轮更长），但跨度也更大
-  tauByTier: [300, 300, 400, 500],
+  abyssPower: 2,              // 深渊增长是 t^k（2 = 二次，前期慢后期快）
+  tauByTier: [300, 3000, 10000, 30000],
   startFraction: 0.5,          // 旧的比例起点（已不再使用）
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
-  tierExponents: [24, 249, 2492, 24920, 249209, 2492094, 24920949, 249209494],
+  tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
   tierMantissa: 2.49,
   maxTier: 3,
   tickSeconds: 0.05,
@@ -60,6 +61,7 @@ const upBase = () => Dec.one();
 export const UP_COST_MULT = (i) => i + 2;
 const upCostMult = (i) => UP_COST_MULT(i);
 // 价格也是幂：1 + 0.5·l^2.5（幂次高于效果的 l^1.5，所以越买越贵、自然收敛，但不会一买就卡死）
+const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const upCost = (i) => (l) => Dec.mul(upBase(i), d(1 + 0.5 * Math.pow(l, 3)));
 
 // ─────────────────────────────────────────────
@@ -73,7 +75,7 @@ const C249 = {
   unlockTier: 0,
   blurb: '不会记得每次轮回，数据库里却有每一轮的记录。',
     upgrades: [
-    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
+    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + UP_POWER_COEFF * Math.pow(l, 1.2)) },
     { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
     { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
     { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
@@ -159,7 +161,7 @@ const BAIQI = {
   unlockTier: 2,
   blurb: '使用重剑，每秒对深渊造成一次伤害。龙的血脉不自知。',
     upgrades: [
-    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', rate: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
+    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', rate: (l) => d(1 + UP_POWER_COEFF * Math.pow(l, 1.2)) },
     { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
     { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },
     { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '产量 ×(1 + 0.1 × 等级^1.2)。', mul: (l) => d(1 + 0.1 * Math.pow(l, 1.2)) },

@@ -29,10 +29,12 @@ export function tierStartLog(tier, startAbyssMult = 1) {
 }
 // 深渊本 tick 的对数增速（数量级/秒）：dy/dt = D·e^(t/τ)/τ
 export function abyssRate(tier, t) {
-  const span = tierCapLog(tier) * TUNING.startFraction;
+  // 幂增长：logS = 起点 + 跨度 × (t/τ)^k，所以速率 = 跨度 × k × (t/τ)^(k-1) / τ
+  // k=2 时前期慢、后期加速 → 玩家暂时能压住，但会被反推（拉锯），又不像 e^t 那样瞬间失控
   const tau = TUNING.tauByTier[tier] ?? TUNING.tau;
-  const e = Math.exp(Math.min(t / tau, 700));   // 防止 e^(t/τ) 溢出成 Infinity
-  return Math.min((span * e) / tau, 1e9);   // 再快也只是这一 tick 直接满档
+  const span = tierCapLog(tier) - tierStartLog(tier);
+  const k = TUNING.abyssPower;
+  return (span * k * Math.pow(Math.max(t, 0) / tau, k - 1)) / tau;
 }
 
 // ─────────────────────────────────────────────
