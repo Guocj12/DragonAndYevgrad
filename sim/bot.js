@@ -50,7 +50,9 @@ function buyLoop(engine, mode) {
     const c = s.chars[item.id];
     let lv = c.upgrades[item.i];
     // 级数估算：成本每级 ×costMult（主链 2、其余 4），可买级数 = (budget - log10(cost))/log10(costMult)
-    const ratio = item.def.costMult || 2;
+    const c0 = Number(engine.costOfUpgrade(item.id, item.i, lv).toString());
+    const c1 = Number(engine.costOfUpgrade(item.id, item.i, lv + 1).toString());
+    const ratio = (c1 > c0 && c0 > 0) ? c1 / c0 : (item.def.costMult || 2);
     const perLevel = Math.log10(ratio);
     let k = Math.floor((budget - lg(engine.costOfUpgrade(item.id, item.i, lv))) / perLevel);
     if (!(k > 0)) continue;
