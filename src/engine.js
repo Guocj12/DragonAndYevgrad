@@ -1042,7 +1042,9 @@ export class Engine {
         out.ap = ap;
       }
       if ((s.run.manualActions || 0) === 0) s.stats.idleCollapses = (s.stats.idleCollapses || 0) + 1;
-      s.stats.runLog.push({ kind: 'collapse', tier, t: Math.round(s.t), purify: Math.round(s.run.bestPurify * 1000) / 1000 });
+      const capLg = tierCapLog(tier) || 1;
+      const outLg = Math.max(0, s.run.purifiedLog || 0);
+      s.stats.runLog.push({ kind: 'collapse', tier, t: Math.round(s.t), purify: Math.min(1, outLg / capLg), outLog: outLg });
       if (s.stats.runLog.length > 5000) s.stats.runLog.shift();
       s.tier = 0;
       out.nextTier = 0;
