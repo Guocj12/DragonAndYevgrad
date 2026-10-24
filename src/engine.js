@@ -710,8 +710,10 @@ export class Engine {
     let total = Dec.zero();
     let n = 0;
     if (!this.upgradeUnlocked(charId, idx)) return { count: 0, total, level: lv, target: lv };
+    const aimCapB = TUNING.aimLevels * (s.stats.cycles + 1);
+    if (lv >= aimCapB) return { count: 0, total, level: lv, target: lv };
     const cap0 = CHARACTERS[charId].upgrades[idx].maxLevel ?? Infinity;
-    const target = Math.min(cap0, (Math.floor(lv / TUNING.bulkGroup) + 1) * TUNING.bulkGroup);
+    const target = Math.min(cap0, aimCapB, (Math.floor(lv / TUNING.bulkGroup) + 1) * TUNING.bulkGroup);
     const maxAdd = Math.max(0, target - lv);
     while (n < maxAdd) {
       const cost = this.costOfUpgrade(charId, idx, lv);
