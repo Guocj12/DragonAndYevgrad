@@ -28,6 +28,8 @@ export const TUNING = {
   dragonCut: envNum('DNY_DC', 0.002),   // 屠龙者：每分钟把深渊进度压低的比例
   boostEnabled: true,          // 新加的「强化」科技开关（测试用）
   upTierWeight: envNum('DNY_TW', 1.5),
+  mpMagnitudeDiv: 20,          // MP = 10^(净化量级/20)（慢启动）
+  techRampMax: 5,              // 科技每级最多给 10^5
   aimStep: envNum('DNY_STEP', 0.1),   // 每轮推进全档的 10%
   aimDivisor: 1600,           // r = 本档上限对数 / 1600
   aimLevels: 20,              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）

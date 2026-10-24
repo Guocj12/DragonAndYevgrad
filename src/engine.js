@@ -294,6 +294,7 @@ export class Engine {
       for (let i = 0; i < def.techs.length; i++) {
         const tc = def.techs[i];
         const lv = c.techs[i];
+      const techRamp = lv > 0 ? (0.3 + (TUNING.techRampMax - 0.3) * lv / (lv + 100)) : 0;
         if (lv <= 0) continue;
         if (tc.kind === 'prodByTime') prod249.mul(d(1 + 0.05 * lv * (ctx.t / 60)), tc.id, tc.name);
         else if (tc.kind === 'mpByTime') mpTech249 *= 1 + 0.2 * lv * (ctx.t / 60);
@@ -1017,7 +1018,8 @@ export class Engine {
 
     // MP：覆灭与守护都给（整数）
     const purifyMag = Math.max(0, s.run.purifiedLog || 0);   // 本轮净化掉的数量级
-    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(purifyMag / TUNING.mpPerMagnitude));
+    // 慢启动：净化量级 12 → 4 MP，净化量级 125 → 1.8e6 MP
+    const base = Dec.add(TUNING.mpPerCollapse, Dec.pow10(purifyMag / TUNING.mpMagnitudeDiv));
     const mp = intRound(Dec.mul(base, b.mpGain));   // 四舍五入：1.8 倍也给 2 点，避免 1 级科技毫无手感
     s.mp = intRound(s.mp.add(mp));
     out.mp = mp;
