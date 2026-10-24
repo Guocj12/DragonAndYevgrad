@@ -57,7 +57,7 @@ function buyLoop(engine, mode) {
     let k = Math.floor((budget - lg(engine.costOfUpgrade(item.id, item.i, lv))) / perLevel);
     if (!(k > 0)) continue;
     const maxLv = item.def.maxLevel ?? Infinity;
-    k = Math.min(k, 10, maxLv - lv);   // 玩家一次点击最多 10 级
+    k = Math.min(k, maxLv - lv);   // 玩家用「购买最大数量」，一次买满
     if (!(k > 0)) continue;
     // 实际扣费按精确成本逐级（最多 2000 级，成本可用几何级数一次算完）
     const first = engine.costOfUpgrade(item.id, item.i, lv);
