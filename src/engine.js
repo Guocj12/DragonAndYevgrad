@@ -44,7 +44,7 @@ export function createInitialState() {
     ap: Dec.zero(),
     t: 0,
     S: Dec.zero(),
-    run: { peakProd: Dec.zero(), bestPurify: 0, manualActions: 0 },
+    run: { peakProd: Dec.zero(), bestPurify: 0, manualActions: 0, purifiedLog: -Infinity },
     chars: {},
     generic: {},
     stats: {
@@ -95,7 +95,7 @@ export function deserialize(text) {
   const base = createInitialState();
   const merged = Object.assign(base, raw);
   for (const k of ['mtc', 'mp', 'pp', 'ap', 'S']) merged[k] = Dec.from(raw[k] ?? 0);
-  if (raw.run) merged.run = { peakProd: Dec.from(raw.run.peakProd ?? 0), bestPurify: raw.run.bestPurify || 0 };
+  if (raw.run) merged.run = Object.assign(base.run, raw.run, { peakProd: Dec.from(raw.run.peakProd ?? 0) });
   if (raw.caches) {
     for (const k of Object.keys(base.caches)) merged.caches[k] = Dec.from(raw.caches[k] ?? 0);
   }
@@ -553,7 +553,18 @@ export class Engine {
     // 2. 战斗结算（净化 + 战斗伤害）
     const totalDmg = b.purifyTea.add(b.dmgTotal);
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
-      s.S = Dec.sub(s.S, totalDmg.mul(dt));
+      const dmg = totalDmg.mul(dt);
+      s.S = Dec.sub(s.S, dmg);
+      // 本轮累计净化掉的深渊（对数饱和累加，用于决定覆灭时给多少记忆点数）
+      {
+        const add = Dec.log10(dmg);
+        if (isFinite(add)) {
+          const cur = s.run.purifiedLog;
+          s.run.purifiedLog = isFinite(cur)
+            ? Math.max(cur, add) + Math.log10(1 + Math.pow(10, Math.min(cur, add) - Math.max(cur, add)))
+            : add;
+        }
+      }
       if (b.lifesteal > 0 && Dec.gt(b.dmgTotal, 0)) {
         // 吸血：把伤害的一小部分转为 mtc，但不超过本 tick 产量的一个比例（避免线性反哺爆表）
         const cap = b.prodTotal.mul(dt * 0.5);
@@ -958,7 +969,8 @@ export class Engine {
     const out = { kind, tier, mp: Dec.zero(), pp: Dec.zero(), ap: Dec.zero(), nextTier: tier };
 
     // MP：覆灭与守护都给（整数）
-    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(s.run.bestPurify * TUNING.mpPurifyFactor));
+    const purifyMag = Math.max(0, s.run.purifiedLog || 0);   // 本轮净化掉的数量级
+    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(purifyMag / TUNING.mpPerMagnitude));
     const mp = intRound(Dec.mul(base, b.mpGain));   // 四舍五入：1.8 倍也给 2 点，避免 1 级科技毫无手感
     s.mp = intRound(s.mp.add(mp));
     out.mp = mp;
@@ -1036,7 +1048,8 @@ export class Engine {
     const s = this.s;
     if (!s.pending) return null;
     const b = this.bonuses();
-    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(s.run.bestPurify * TUNING.mpPurifyFactor));
+    const purifyMag = Math.max(0, s.run.purifiedLog || 0);
+    const base = Dec.add(TUNING.mpPerCollapse, Math.floor(purifyMag / TUNING.mpPerMagnitude));
     const mp = intRound(Dec.mul(base, b.mpGain));
     const pp = s.pending === 'guard'
       ? intRound(Dec.mul(TUNING.ppPerGuard * (s.tier + 1), 1).mul(b.ppGain))

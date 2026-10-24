@@ -23,7 +23,8 @@ export const TUNING = {
   maxTier: 3,
   tickSeconds: 0.05,
   mpPerCollapse: 1,
-  mpPurifyFactor: 8,
+  mpPurifyFactor: 8,          // 旧的净化率系数（保留兼容，已不参与结算）
+  mpPerMagnitude: 5,          // 每净化 5 个数量级的深渊，覆灭时多给 1 点基础记忆点数
   ppPerGuard: 12,
   apLayerBase: 1,
   autoBuyBaseInterval: 1.0,
