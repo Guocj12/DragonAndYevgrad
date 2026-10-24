@@ -33,7 +33,7 @@ export const TUNING = {
   aimStep: envNum('DNY_STEP', 0.1),   // 每轮推进全档的 10%
   aimDivisor: 1600,           // r = 本档上限对数 / 1600
   aimLevels: 25,               // 每轮解锁 25 级
-  upBase: 1.155,               // 升级每级倍率（反推值）              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）
+  upBase: 16,               // 升级每级倍率（反推值）              // 每轮解锁 20 级             // 第 i 个升级额外 ×3^i（越靠后越强）
   collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
@@ -79,7 +79,7 @@ const upCostMult = (i) => UP_COST_MULT(i);
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
 const UP_KAPPA = envNum('DNY_K', 2);             // 每级效果倍率（指数）
-const UP_COST_BASE = envNum('DNY_CB', 3.5);        // 每级价格倍率（>效果倍率 → 买级有上限）
+const UP_COST_BASE = envNum('DNY_CB', 20);        // 每级价格倍率（>效果倍率 → 买级有上限）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃

@@ -33,6 +33,7 @@ function buyLoop(engine, mode) {
       const lv = c.upgrades[i];
       const maxLv = def.maxLevel ?? Infinity;
       if (lv >= maxLv) continue;
+      if (engine.upgradeUnlocked && !engine.upgradeUnlocked(id, i)) continue;   // 尊重解锁链
       const cost = engine.costOfUpgrade(id, i, lv);
       const cl = Math.max(0.001, lg(cost));
       const e0 = effectLog(def, lv, ctx);
