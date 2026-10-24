@@ -71,7 +71,7 @@ const upCostMult = (i) => UP_COST_MULT(i);
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
 const UP_KAPPA = envNum('DNY_K', 2);             // 每级效果倍率（指数）
-const UP_COST_BASE = envNum('DNY_CB', 2.5);        // 每级价格倍率（>效果倍率 → 买级有上限）
+const UP_COST_BASE = envNum('DNY_CB', 100);        // 每级价格倍率（>效果倍率 → 买级有上限）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃

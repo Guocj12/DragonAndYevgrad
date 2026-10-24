@@ -239,15 +239,6 @@ export class Engine {
 
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
-    // 跨轮乘区按「本档覆灭次数」分别累积：每档跨度不同，成长速度也不同
-    let memLog = 0;
-    for (let ti = 0; ti < TUNING.memoryByTierLog.length; ti++) {
-      memLog += TUNING.memoryByTierLog[ti] * ((s.stats.tierCycles && s.stats.tierCycles[ti]) || 0);
-    }
-    if (memLog > 0) {
-      const here = (s.stats.tierCycles && s.stats.tierCycles[s.tier]) || 0;
-      genericProd.mul(Dec.pow10(memLog), 'memory', `记忆累积（本档覆灭 ${here} 次）`);
-    }
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
     let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
