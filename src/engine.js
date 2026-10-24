@@ -283,6 +283,8 @@ export class Engine {
         const lv = c.upgrades[i];
         if (lv <= 0) continue;
         if (upBoost[i] > 1) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(upBoost[i]), u.id + 'boost', u.name + '（强化）');
+        // 越靠后的升级越强：第 i 项额外 ×3^i
+        if (i > 0) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(Math.pow(TUNING.upTierWeight, i)), u.id + 'w', u.name + '·顺位');
         if (u.kind === 'prod') {
           prod249.mul(u.mul(lv, ctx), u.id, u.name);
           if (u.id === '249u8') eta.mul(d(1 + 0.1 * lv), '249u8e', '产线总控·净化');

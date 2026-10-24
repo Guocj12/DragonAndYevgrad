@@ -27,6 +27,7 @@ export const TUNING = {
   memoryByTierLog: [4, 30, 200, 1200, 7000, 40000, 240000, 1400000],
   dragonCut: envNum('DNY_DC', 0.002),   // 屠龙者：每分钟把深渊进度压低的比例
   boostEnabled: true,          // 新加的「强化」科技开关（测试用）
+  upTierWeight: 3,             // 第 i 个升级额外 ×3^i（越靠后越强）
   collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
@@ -61,7 +62,7 @@ export const costOf = (base, mult, level) => Dec.mul(d(base), pow(mult, level));
 export const TIER_NAMES = ['奶茶店', '耶维城', '飞龙国', '奶茶大陆'];
 
 // 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
-export const REQ_LEVELS = [0, 10, 12, 14, 16, 18, 20, 20];
+export const REQ_LEVELS = [0, 10, 20, 30, 40, 50, 60, 70];
 const UP_GROUP_MULT = 1000;   // 每 10 级的价格倍率（AD 的维度 1 就是 1000）
 const upBase = () => Dec.one();
 // 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9；
@@ -90,14 +91,14 @@ const C249 = {
   unlockTier: 0,
   blurb: '不会记得每次轮回，数据库里却有每一轮的记录。',
     upgrades: [
-    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: '249u8', name: '产线总控', kind: 'prod', cost: upCost(7), desc: () => '产量 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.5, Math.floor(l / 10))) },
+    { id: '249u1', name: '灌装线', kind: 'prod', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u2', name: '配方改良', kind: 'prod', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u3', name: '净化喷嘴', kind: 'eta', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u4', name: '时钟校准', kind: 'speed', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u5', name: '产线联动', kind: 'prod', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u6', name: '记忆结晶', kind: 'eta', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u7', name: '高峰时段', kind: 'prod', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: '249u8', name: '产线总控', kind: 'prod', cost: upCost(7), desc: () => '产量 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.8, Math.floor(l / 10))) },
   ],
   techs: [
     { id: '249t1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -141,14 +142,14 @@ const YEWEI = {
   unlockTier: 1,
   blurb: '可以独立生产奶茶，也会为其他角色提供强力辅助。',
     upgrades: [
-    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu4', name: '共生', kind: 'prodAll', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu5', name: '扩张', kind: 'line', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu6', name: '门路', kind: 'prodAll', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'ywu8', name: '分店', kind: 'prodAll', cost: upCost(7), desc: () => '全体产量 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.5, Math.floor(l / 10))) },
+    { id: 'ywu1', name: '万事屋', kind: 'line', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu2', name: '人脉', kind: 'prodAll', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu3', name: '连锁', kind: 'line', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu4', name: '共生', kind: 'prodAll', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu5', name: '扩张', kind: 'line', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu6', name: '门路', kind: 'prodAll', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu7', name: '深度经营', kind: 'line', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'ywu8', name: '分店', kind: 'prodAll', cost: upCost(7), desc: () => '全体产量 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.8, Math.floor(l / 10))) },
   ],
   techs: [
     { id: 'ywt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -192,14 +193,14 @@ const BAIQI = {
   unlockTier: 2,
   blurb: '使用重剑，每秒对深渊造成一次伤害。龙的血脉不自知。',
     upgrades: [
-    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', rate: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu5', name: '逆鳞', kind: 'power', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu6', name: '斩击', kind: 'damage', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu7', name: '剑势', kind: 'powerRate', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'bqu8', name: '剑魂', kind: 'power', cost: upCost(7), desc: () => '战力 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.5, Math.floor(l / 10))) },
+    { id: 'bqu1', name: '剑意', kind: 'powerRate', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', rate: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu2', name: '剑技', kind: 'power', cost: upCost(1), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu3', name: '屠龙', kind: 'damage', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu4', name: '剑心', kind: 'powerRate', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu5', name: '逆鳞', kind: 'power', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu6', name: '斩击', kind: 'damage', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu7', name: '剑势', kind: 'powerRate', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'bqu8', name: '剑魂', kind: 'power', cost: upCost(7), desc: () => '战力 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.8, Math.floor(l / 10))) },
   ],
   techs: [
     { id: 'bqt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
@@ -243,14 +244,14 @@ const HENG = {
   unlockTier: 3,
   blurb: '力量与深渊同源：深渊越强，他越强。',
     upgrades: [
-    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
+    { id: 'hgu1', name: '骨钉', kind: 'power', cost: upCost(0), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
     { id: 'hgu2', name: '同源', kind: 'alpha', cost: upCost(1), desc: () => '深渊转化 +0.005/级（上限 0.5）。', maxLevel: Infinity, add: (l) => Math.min(0.5, 0.005 * l) },
-    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'hgu6', name: '转化核心', kind: 'alpha', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.5, Math.floor(l / 10))) },
-    { id: 'hgu8', name: '同源核心', kind: 'damage', cost: upCost(7), desc: () => '伤害 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.5, Math.floor(l / 10))) },
+    { id: 'hgu3', name: '疾风', kind: 'atkSpeed', cost: upCost(2), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'hgu4', name: '钉刺', kind: 'damage', cost: upCost(3), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'hgu5', name: '深渊共鸣', kind: 'power', cost: upCost(4), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'hgu6', name: '转化核心', kind: 'alpha', cost: upCost(5), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'hgu7', name: '攻速核心', kind: 'atkSpeed', cost: upCost(6), desc: () => '产量 ×等级^1.4 ×1.5^⌊等级/10⌋。', mul: (l) => Dec.mul(Dec.pow(l, 1.4), Dec.pow(1.8, Math.floor(l / 10))) },
+    { id: 'hgu8', name: '同源核心', kind: 'damage', cost: upCost(7), desc: () => '伤害 ×1.32/级。', mul: (l) => Dec.mul(Dec.mul(Dec.pow(l, 1.4), 2), Dec.pow(1.8, Math.floor(l / 10))) },
   ],
   techs: [
     { id: 'hgt1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
