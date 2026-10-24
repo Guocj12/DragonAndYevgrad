@@ -20,7 +20,7 @@ export const TUNING = {
   // 每档的深渊时间尺度：越往后越慢（单轮更长），但跨度也更大
   tauByTier: [300, 300, 400, 500],
   startFraction: 0.5,
-  tierExponents: [24, 249, 2492, 24920, 249209, 2492094, 24920949, 249209494],
+  tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
   tierMantissa: 2.49,
   maxTier: 3,
   tickSeconds: 0.05,
