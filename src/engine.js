@@ -272,8 +272,8 @@ export class Engine {
         const lv = c.techs[i];
         if (lv <= 0) continue;
         if (tc.kind === 'prodByTime') prod249.mul(d(1 + 0.05 * lv * (ctx.t / 60)), tc.id, tc.name);
-        else if (tc.kind === 'mpByTime') mpTech249 *= 1 + 0.1 * lv * (ctx.t / 60);
-        else if (tc.kind === 'ppByEarliness') ppTech249 *= 1 + 0.1 * lv * Math.max(0, (TUNING.fillSeconds - ctx.t)) / 60;
+        else if (tc.kind === 'mpByTime') mpTech249 *= 1 + 0.2 * lv * (ctx.t / 60);
+        else if (tc.kind === 'ppByEarliness') ppTech249 *= 1 + 0.2 * lv * Math.max(0, (TUNING.fillSeconds - ctx.t)) / 60;
       }
       const nt = ctx.nTree['249'];
       for (const node of def.tree) {
