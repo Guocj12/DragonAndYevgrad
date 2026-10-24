@@ -23,6 +23,7 @@ export const TUNING = {
   startFraction: 0.5,          // 旧的比例起点（已不再使用）
   abyssT0: envNum('DNY_T0', 10),         // 对数深渊的特征时间
   abyssFollow: envNum('DNY_AF', 0),   // 深渊增长率跟随玩家产量增速的权重
+  collapseProgress: envNum('DNY_CP2', 0.08),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
   tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
