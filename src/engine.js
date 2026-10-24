@@ -936,7 +936,7 @@ export class Engine {
 
     // MP：覆灭与守护都给（整数）
     const base = Dec.add(TUNING.mpPerCollapse, Math.floor(s.run.bestPurify * TUNING.mpPurifyFactor));
-    const mp = intFloor(Dec.mul(base, b.mpGain));
+    const mp = intRound(Dec.mul(base, b.mpGain));   // 四舍五入：1.8 倍也给 2 点，避免 1 级科技毫无手感
     s.mp = intRound(s.mp.add(mp));
     out.mp = mp;
 
