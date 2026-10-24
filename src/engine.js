@@ -580,7 +580,14 @@ export class Engine {
     s.caches.baiqiStock = d(s.caches.baiqiStock || 0).add((s.caches.rateBaiqi || Dec.zero()).mul(dt));
 
     // 2. 战斗结算（净化 + 战斗伤害）
-    const totalDmg = b.purifyTea.add(b.dmgTotal);   // 真实输出（不再锁定）
+    let totalDmg = b.purifyTea.add(b.dmgTotal);
+    // ── 分段函数（净化层）：本档第 N 轮严格打出深渊起点的 N×10% ──
+    {
+      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
+      const targetTotalLog = TUNING.aimStep * n * tierCapLog(s.tier) * 0.5;
+      const expectTicks = Math.max(1, (TUNING.tauByTier[s.tier] || TUNING.tau) / dt);
+      totalDmg = Dec.pow10(targetTotalLog - Math.log10(expectTicks));
+    }
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
