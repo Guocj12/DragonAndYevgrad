@@ -929,7 +929,8 @@ export class Engine {
         c.autoTimer += dt;
         if (c.autoTimer >= interval) {
           c.autoTimer = 0;
-          for (let i = 0; i < Math.min(autoLv, 8); i++) this.buyUpgrade(id, i, 1);
+          if (autoLv >= TUNING.autoBuyMaxLevel) this.buyMaxAll(id);   // 满级：每次直接买到买不起
+          else for (let i = 0; i < Math.min(autoLv, 8); i++) this.buyUpgrade(id, i, 1);
         }
       }
     }

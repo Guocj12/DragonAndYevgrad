@@ -29,7 +29,7 @@ export const TUNING = {
   autoBuyBaseInterval: 1.0,
   autoBuyIntervalMult: 0.95,
   autoBuyMinInterval: 0.05,
-  autoBuyMaxLevel: 67,
+  autoBuyMaxLevel: 68,
   memoryBase: envNum('DNY_MB', 1.45),   // 记忆累积：每覆灭一次，全体产量 ×1.45
   alphaCap: envNum('DNY_ALPHA', 0.5),
   bulkGroup: 10,
@@ -74,7 +74,7 @@ const C249 = {
   ],
   techs: [
     { id: '249t1', name: '自动采购', kind: 'auto', cost: (l) => costOf(1, 1.35, l), maxLevel: TUNING.autoBuyMaxLevel,
-      desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : '购买间隔 ×0.95/级，最低 0.05 秒。') },
+      desc: (l) => (l < 1 ? '自动购买第 1 个升级。' : l < 8 ? `自动购买前 ${l} 个升级。` : l < TUNING.autoBuyMaxLevel ? '购买间隔 ×0.95/级，最低 0.05 秒。' : '满级：每秒 20 次，每次直接买到买不起。') },
     { id: '249t2', name: '超频', kind: 'mpByTime', cost: (l) => costOf(2, 1.4, l), maxLevel: Infinity,
       desc: () => '每次结算的记忆点数 ×(1 + 0.2 × 等级 × 本轮分钟数)。' },
     { id: '249t3', name: '增产', kind: 'ppByEarliness', cost: (l) => costOf(3, 1.3, l), maxLevel: Infinity,
