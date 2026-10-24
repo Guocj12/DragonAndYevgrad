@@ -17,6 +17,8 @@ const envNum = (name, fallback) => {
 export const TUNING = {
   fillSeconds: 249,
   tau: 249 / Math.LN2,
+  // 每档的深渊时间尺度：越往后越慢（单轮更长），但跨度也更大
+  tauByTier: [300, 1800, 4800, 10000],
   startFraction: 0.5,
   tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
   tierMantissa: 2.49,
@@ -33,7 +35,7 @@ export const TUNING = {
   autoBuyIntervalMult: 0.95,
   autoBuyMinInterval: 0.05,
   autoBuyMaxLevel: 68,
-  memoryBase: envNum('DNY_MB', 1.45),   // 记忆累积：每覆灭一次，全体产量 ×1.45
+  memoryBase: envNum('DNY_MB', 5),   // 记忆累积：每覆灭一次，全体产量 ×1.45
   alphaCap: envNum('DNY_ALPHA', 0.5),
   bulkGroup: 10,
   groupCostMult: 1,

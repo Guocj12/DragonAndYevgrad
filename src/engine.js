@@ -28,7 +28,9 @@ export function tierStartLog(tier, startAbyssMult = 1) {
 // 深渊本 tick 的对数增速（数量级/秒）：dy/dt = D·e^(t/τ)/τ
 export function abyssRate(tier, t) {
   const span = tierCapLog(tier) * TUNING.startFraction;
-  return (span * Math.exp(t / TUNING.tau)) / TUNING.tau;
+  const tau = TUNING.tauByTier[tier] ?? TUNING.tau;
+  const e = Math.exp(Math.min(t / tau, 700));   // 防止 e^(t/τ) 溢出成 Infinity
+  return Math.min((span * e) / tau, 1e9);   // 再快也只是这一 tick 直接满档
 }
 
 // ─────────────────────────────────────────────
@@ -555,6 +557,7 @@ export class Engine {
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
+      if (Dec.lte(s.S, 0)) s.S = Dec.zero();   // 夹到 0：负数的 log10 会变 NaN
       // 本轮累计净化掉的深渊（对数饱和累加，用于决定覆灭时给多少记忆点数）
       {
         const add = Dec.log10(dmg);
