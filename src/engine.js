@@ -1235,9 +1235,10 @@ export class Engine {
     // 深渊起点：取「本档固定起点」与「玩家进档时产量 × 10^gap」的较大者，
     // 这样进新档时深渊总比玩家强一点点，靠轮内加速去追，而不是一跳 100 个数量级。
     this.b = null;
-    const baseLog = tierStartLog(tier, Math.pow(0.9, s.generic['g6'] || 0));
+    // 起点 = max(本档上限的一半, 玩家上一轮峰值 + startGap)：每档至少隔着半个跨度，保证刚进档打不过
+    const halfCap = tierCapLog(tier) * 0.5;
     const pLog = Dec.log10(Dec.max(prevPeak, 1)) + TUNING.startGap;
-    s.S = Dec.pow10(Math.max(baseLog, pLog));
+    s.S = Dec.pow10(Math.min(tierCapLog(tier) - 1, Math.max(halfCap, pLog)) * Math.pow(0.9, s.generic['g6'] || 0));
   }
 
   // ── 贡献面板 ──
