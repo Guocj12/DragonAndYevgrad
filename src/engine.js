@@ -481,7 +481,7 @@ export class Engine {
       // 深渊越强恒越强，但用对数幂次，避免直接指数化把平衡冲掉
       hengPower = prod249Base.mul(d(10 * Math.pow(1 + lgRatio, 1 + 2 * alpha))).mul(powerMul.value()).mul(achMul);
       let eff = hengPower.mul(0.1).mul(dmgMul.value());
-      if (atkSpeed > 20) eff = eff.mul(d(atkSpeed / 20));
+      if (Dec.gt(atkMul.value(), d(20))) eff = eff.mul(atkMul.value()).div(d(20));   // 用 Dec 运算，避免 toNumber 溢出成 Infinity
       if (c.tree['hga6']) {
         const drain = 0.0005 * ctx.nTree.heng;
         const amt = s.S.mul(drain * TUNING.tickSeconds);
