@@ -270,10 +270,19 @@ export class Engine {
     if (this.isUnlocked('249')) {
       const c = s.chars['249'];
       const def = CHARACTERS['249'];
+      // 「强化」科技：pair 里的两个升级效果 ×2^等级
+      const upBoost = new Array(def.upgrades.length).fill(1);
+      for (let bi = 0; bi < def.techs.length; bi++) {
+        const bt = def.techs[bi];
+        if (bt.kind !== 'upBoost') continue;
+        const blv = c.techs[bi] || 0;
+        if (blv > 0) { const f = Math.pow(2, blv); upBoost[bt.pair[0]] *= f; upBoost[bt.pair[1]] *= f; }
+      }
       for (let i = 0; i < def.upgrades.length; i++) {
         const u = def.upgrades[i];
         const lv = c.upgrades[i];
         if (lv <= 0) continue;
+        if (upBoost[i] > 1) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(upBoost[i]), u.id + 'boost', u.name + '（强化）');
         if (u.kind === 'prod') {
           prod249.mul(u.mul(lv, ctx), u.id, u.name);
           if (u.id === '249u8') eta.mul(d(1 + 0.1 * lv), '249u8e', '产线总控·净化');
