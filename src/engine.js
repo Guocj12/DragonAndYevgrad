@@ -89,7 +89,7 @@ export function createInitialState() {
     };
   }
   for (const n of GENERIC_TREE) s.generic[n.id] = 0;
-  s.S = Dec.pow10(tierStartLog(0));
+    s.S = Dec.pow10(tierCapLog(0) * 0.5);   // 与 startRun 一致：起点固定为本档上限一半
   return s;
 }
 
