@@ -578,7 +578,16 @@ export class Engine {
     s.caches.baiqiStock = d(s.caches.baiqiStock || 0).add((s.caches.rateBaiqi || Dec.zero()).mul(dt));
 
     // 2. 战斗结算（净化 + 战斗伤害）
-    const totalDmg = b.purifyTea.add(b.dmgTotal);
+    let totalDmg = b.purifyTea.add(b.dmgTotal);
+    // ── 目标锁定（净化层）──
+    // 本档第 N 轮要打出的总输出（对数）= 0.1 × N × 上限对数 / 2，均摊到预期 tick 数
+    {
+      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
+      const targetTotalLog = TUNING.aimStep * n * tierCapLog(s.tier) * 0.5;   // 第 n 轮 = 深渊起点的 n×10%
+      const expectTicks = Math.max(1, (TUNING.tauByTier[s.tier] || TUNING.tau) / dt);
+      const perTickLog = targetTotalLog - Math.log10(expectTicks);
+      totalDmg = Dec.pow10(perTickLog);
+    }
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
@@ -1056,7 +1065,7 @@ export class Engine {
         out.ap = ap;
       }
       if ((s.run.manualActions || 0) === 0) s.stats.idleCollapses = (s.stats.idleCollapses || 0) + 1;
-      const capLg = tierCapLog(tier) || 1;
+      const capLg = (tierCapLog(tier) || 1) * 0.5;   // 分母是深渊起点（上限一半），打满才是 100%
       const outLg = Math.max(0, s.run.purifiedLog || 0);
       s.stats.runLog.push({ kind: 'collapse', tier, t: Math.round(s.t), purify: Math.min(1, outLg / capLg), outLog: outLg });
       if (s.stats.runLog.length > 5000) s.stats.runLog.shift();
