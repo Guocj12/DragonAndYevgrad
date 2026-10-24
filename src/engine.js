@@ -949,7 +949,7 @@ export class Engine {
         s.stats.purifiedLog = !isFinite(a) ? add : Math.max(a, add) + Math.log10(1 + Math.pow(10, Math.min(a, add) - Math.max(a, add)));
       }
       if (tier > s.stats.maxTier) s.stats.maxTier = tier;
-      const pp = intFloor(Dec.mul(TUNING.ppPerGuard * (tier + 1), 1).mul(b.ppGain));
+      const pp = intRound(Dec.mul(TUNING.ppPerGuard * (tier + 1), 1).mul(b.ppGain));   // 同样四舍五入
       s.pp = intRound(s.pp.add(pp));
       out.pp = pp;
       if (!s.stats.firstGuard[tier]) {
