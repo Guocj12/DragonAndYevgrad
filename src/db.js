@@ -18,14 +18,15 @@ export const TUNING = {
   fillSeconds: 249,
   tau: 249 / Math.LN2,
   // 每档的深渊时间尺度：越往后越慢（单轮更长），但跨度也更大
-  tauByTier: [300, 1800, 4800, 10000],
+  tauByTier: [300, 1200, 2400, 3000],
   startFraction: 0.5,
-  tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
+  tierExponents: [24, 249, 2492, 24920, 249209, 2492094, 24920949, 249209494],
   tierMantissa: 2.49,
   maxTier: 3,
   tickSeconds: 0.05,
   mpPerCollapse: 1,
   mpPurifyFactor: 8,          // 旧的净化率系数（保留兼容，已不参与结算）
+  achPer: 0.2,                 // 每个成就给全体 +20%
   keepSeconds: 1e6,           // 记忆归档的基础保留量
   keepBase: 1.45,             // 保留量随覆灭次数增长
   mpPerMagnitude: 5,          // 每净化 5 个数量级的深渊，覆灭时多给 1 点基础记忆点数
@@ -35,7 +36,8 @@ export const TUNING = {
   autoBuyIntervalMult: 0.95,
   autoBuyMinInterval: 0.05,
   autoBuyMaxLevel: 68,
-  memoryBase: envNum('DNY_MB', 5),   // 记忆累积：每覆灭一次，全体产量 ×1.45
+  memoryBase: envNum('DNY_MB', 1.5),   // 记忆归档（保留奶茶币）的轮次增长
+  memoryLinear: envNum('DNY_ML', 1),   // 记忆累积（加算）：每覆灭一次，全体产量 +memoryLinear
   alphaCap: envNum('DNY_ALPHA', 0.5),
   bulkGroup: 10,
   groupCostMult: 1,

@@ -60,6 +60,7 @@ export function createInitialState() {
       maxTier: 0,               // 到达过的最高档
       runLog: [],
       manualProduce: 0,        // 手动生产次数（长按整段只算一次）
+      tierCycles: [0, 0, 0, 0],   // 每个地方各自的覆灭次数（记忆累积按地方独立）
       idleCollapses: 0,        // 一整轮没有任何手动操作的覆灭次数
     },
     unlocked: ['249'],
@@ -211,6 +212,7 @@ export class Engine {
       t: s.t, tier: s.tier, mtc: s.mtc, S: s.S,
       cap: tierCap(s.tier), yS, yCap: tierCapLog(s.tier), y0, progress,
       cycles: s.stats.cycles, guards: s.stats.guards,
+      tierCycles: (s.stats.tierCycles && s.stats.tierCycles[s.tier]) || 0,
       sumL, nTree, sumLAll, nTreeAll,
       maxProd: s.run.peakProd,
       prod249: (b && b.prod249) || Dec.one(),
@@ -229,11 +231,11 @@ export class Engine {
     const ctx = this.buildCtx();
     const g = (id) => s.generic[id] || 0;
 
-    const achMul = d(1 + ((s.achievements && s.achievements.length) || 0));   // 每个成就 +100% 全体加成
+    const achMul = d(1 + TUNING.achPer * ((s.achievements && s.achievements.length) || 0));   // 每个成就 +achPer
 
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
-    genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', `记忆累积（覆灭 ${ctx.cycles} 次）`);
+    genericProd.mul(d(1 + TUNING.memoryLinear * ctx.tierCycles), 'memory', `记忆累积（本地区覆灭 ${ctx.tierCycles} 次）`);
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
     let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
@@ -1011,6 +1013,8 @@ export class Engine {
     } else {
       s.stats.cycles++;
       s.stats.collapses++;
+      if (!s.stats.tierCycles) s.stats.tierCycles = [0, 0, 0, 0];
+      s.stats.tierCycles[tier] = (s.stats.tierCycles[tier] || 0) + 1;
       s.stats.tierCollapses[tier]++;
       if (!s.stats.firstCollapse[tier]) {
         s.stats.firstCollapse[tier] = true;
