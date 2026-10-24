@@ -5,7 +5,7 @@ import { Dec, formatScientific, formatTime } from '../../src/num.js';
 import {
   ENGINE_VERSION, Engine, createInitialState, deserialize, serialize, tierCapLog,
 } from '../../src/engine.js';
-import { CHARACTERS, CHARACTER_ORDER, TUNING } from '../../src/db.js';
+import { CHARACTERS, CHARACTER_ORDER, TIER_NAMES, TUNING } from '../../src/db.js';
 import { TreeView } from './tree.js';
 
 const SAVE_KEY = 'dny-save-v1';
@@ -146,7 +146,7 @@ function loadGame() {
       engine.offlineMult = (engine.s.generic['g4'] || 0) > 0 ? 0.25 : 1;
       engine.advance(elapsed);
       engine.offlineMult = 1;
-      say(`离线 ${formatTime(elapsed)} 结束：档位 ${engine.s.tier}，累计覆灭 ${engine.s.stats.cycles} 次`);
+      say(`离线 ${formatTime(elapsed)} 结束：现在在${TIER_NAMES[engine.s.tier]}，累计覆灭 ${engine.s.stats.cycles} 次`);
     }
     return true;
   } catch (e) {
@@ -227,7 +227,7 @@ function headerVM() {
   const progress = Math.max(0, Math.min(1, yS / yCap));
   return {
     mtc: fmt(s.mtc), mp: fmt(s.mp), pp: fmt(s.pp), ap: fmt(s.ap),
-    tier: s.tier, tierMax: TUNING.maxTier,
+    tier: s.tier, tierMax: TUNING.maxTier, tierName: TIER_NAMES[s.tier] || `第 ${s.tier} 区`,
     abyss: fmt(s.S), cap: fmt(Dec.pow10(yCap)),
     prod: fmt(b.prodTotal), purify: fmt(b.purifyTea.add(b.dmgTotal)),
     runTime: `${s.t.toFixed(1)}s`, progress: progress * 100,
@@ -309,7 +309,7 @@ function statsVM() {
       ['产量数量级', c.prodLog.toFixed(1)],
       ['净化+伤害数量级', c.purifyLog.toFixed(1)],
       ['深渊数量级', c.abyssLog.toFixed(1)],
-      ['档位', s.tier],
+      ['所在地', TIER_NAMES[s.tier] || s.tier],
       ['覆灭次数', s.stats.cycles],
       ['守护次数', s.stats.guards],
     ],
@@ -333,7 +333,7 @@ function buildVM() {
       rows: boardRows.map((r, i) => ({
         rank: i + 1,
         name: r.name,
-        tierText: `档 ${r.tier}`,
+        tierText: TIER_NAMES[r.tier] || `第 ${r.tier} 区`,
         purifiedText: r.purified > 0 ? fmt(Dec.pow10(r.purified)) : '—',
         cycles: r.cycles,
         guards: r.guards,
@@ -447,8 +447,8 @@ function act(action, payload) {
         if (Dec.gt(out.pp, 0)) parts.push(`净化点数 +${fmt(out.pp)}`);
         if (Dec.gt(out.ap, 0)) parts.push(`觉醒点 +${fmt(out.ap)}`);
         say(out.kind === 'guard'
-          ? `净化完成：上限 +1 档（当前档 ${out.nextTier}），${parts.join('，')}`
-          : `覆灭结算：回到档 0，${parts.join('，')}`);
+          ? `净化完成：上限 +1，来到${TIER_NAMES[out.nextTier] || '下一片区域'}，${parts.join('，')}`
+          : `覆灭结算：回到奶茶店，${parts.join('，')}`);
       }
       break;
     }
@@ -535,8 +535,8 @@ const app = new Vue({
     pendingTitle() { return engine.s.pending === 'guard' ? '深渊已清零' : '深渊已满'; },
     pendingDesc() {
       return engine.s.pending === 'guard'
-        ? '点击「净化」结算本轮：获得记忆点数 / 净化点数，并进入下一档。'
-        : '点击「覆灭结算」：获得记忆点数，回到档 0；升级清空，科技与科技树保留。';
+        ? '点击「净化」结算本轮：获得记忆点数 / 净化点数，并前往下一片区域。'
+        : '点击「覆灭结算」：获得记忆点数，回到奶茶店；升级清空，科技与科技树保留。';
     },
     pendingReward() {
       if (!engine.s.pending) return '';
@@ -611,7 +611,7 @@ const app = new Vue({
         <div class="c-header-res c-header-res--mp"><span class="c-header-res__label">记忆点数</span><span class="c-header-res__value">{{ vm.header.mp }}</span></div>
         <div class="c-header-res c-header-res--pp"><span class="c-header-res__label">净化点数</span><span class="c-header-res__value">{{ vm.header.pp }}</span></div>
         <div class="c-header-res c-header-res--ap"><span class="c-header-res__label">觉醒点</span><span class="c-header-res__value">{{ vm.header.ap }}</span></div>
-        <div class="c-header-tier">档 {{ vm.header.tier }} / {{ vm.header.tierMax }}</div>
+        <div class="c-header-tier">你现在在 {{ vm.header.tierName }}</div>
         <button class="o-primary-btn c-pause-btn" :class="{ 'c-pause-btn--on': vm.paused }" :disabled="!!vm.pending" @click="act('pause')">
           {{ vm.paused ? '▶ 继续' : '⏸ 暂停' }}
         </button>
@@ -752,13 +752,13 @@ const app = new Vue({
         <template v-else-if="vm.page.kind === 'board'">
           <div class="l-section-title">
             排行榜
-            <span class="c-dim-note">按「最高档 → 净化深渊总量 → 覆灭次数」排序，每分钟自动上传</span>
+            <span class="c-dim-note">按「所在地 → 净化深渊总量 → 覆灭次数」排序，每分钟自动上传</span>
             <button class="o-primary-btn c-board-refresh" @click="act('boardRefresh')">刷新</button>
           </div>
           <div v-if="vm.body.board.note" class="c-dim-note c-board-note">{{ vm.body.board.note }}</div>
           <table class="c-stats-table c-board-table" v-if="vm.body.board.rows.length">
             <thead>
-              <tr><th>#</th><th>玩家</th><th>最高档</th><th>净化深渊总量</th><th>守护</th><th>覆灭</th><th>累计游玩</th><th>通关</th></tr>
+              <tr><th>#</th><th>玩家</th><th>所在地</th><th>净化深渊总量</th><th>守护</th><th>覆灭</th><th>累计游玩</th><th>通关</th></tr>
             </thead>
             <tbody>
               <tr v-for="r in vm.body.board.rows" :key="'b'+r.rank" :class="{ 'c-board-me': r.name === vm.body.board.myName }">
@@ -840,7 +840,7 @@ const app = new Vue({
           </div>
           <div class="l-section-title">玩法速记</div>
           <div class="c-dim-note" style="max-width:110rem;text-align:left">
-            深渊每秒按超指数增长：充满 → 覆灭（回到档 0），清零 → 守护（进下一档）。
+            深渊每秒按超指数增长：充满 → 覆灭（回到奶茶店），清零 → 守护（前往下一片区域）。
             升级用奶茶币（每轮重置），科技用记忆点数（永不重置），角色科技树用觉醒点（可重置返还），通用树用净化点数。
             守护 / 覆灭 / 剧情播放时自动暂停，结算完自动继续。
           </div>

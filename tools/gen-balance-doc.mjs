@@ -1,7 +1,7 @@
 // tools/gen-balance-doc.mjs — 从 src/db.js 导出数值表到 docs/16-数值表.md
 // 用法：node tools/gen-balance-doc.mjs
 import fs from 'node:fs';
-import { TUNING, REQ_LEVELS, UP_COST_MULT, CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, AUTO_CENTER_MAX, treeLayerCost } from '../src/db.js';
+import { TUNING, TIER_NAMES, REQ_LEVELS, UP_COST_MULT, CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, AUTO_CENTER_MAX, treeLayerCost } from '../src/db.js';
 
 const effOf = (mult, l) => Number(mult);
 const fmt = (x) => (typeof x === 'number' ? (Math.abs(x) >= 1e5 ? x.toExponential(3) : String(x)) : String(x));
@@ -47,6 +47,13 @@ for (const [k, v] of Object.entries(TUNING)) {
 push('');
 
 // ── 升级 ──
+push('## 一·补、档位地名');
+push('');
+push('| 档 | 地名 | 上限 |');
+push('|---|---|---|');
+TIER_NAMES.forEach((name, i) => push(`| ${i} | ${name} | 2.49 × 10^${TUNING.tierExponents[i]} |`));
+push('');
+
 push('## 二、角色升级（每角色 8 项，全部无等级上限）');
 push('');
 push(`- 每级成本倍率：升级 1 ×2、升级 2 ×3 …… 升级 8 ×9（\`UP_COST_MULT(i) = i + 2\`）`);

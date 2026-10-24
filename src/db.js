@@ -40,6 +40,9 @@ const d = (x) => (x instanceof Dec ? x : Dec.from(x));
 const pow = (base, l) => Dec.pow(base, l);
 export const costOf = (base, mult, level) => Dec.mul(d(base), pow(mult, level));
 
+// 四档地名（按档位顺序，档 4–7 未设计）
+export const TIER_NAMES = ['奶茶店', '耶维城', '飞龙国', '奶茶大陆'];
+
 // 升级没有等级上限；这个常数只是「解锁下一项」的门槛：前一个买到 N 级，下一个才开放
 export const REQ_LEVELS = [0, 10, 20, 30, 40, 50, 60, 70];
 const upBase = () => Dec.one();

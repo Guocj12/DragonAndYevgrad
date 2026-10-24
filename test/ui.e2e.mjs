@@ -57,7 +57,7 @@ const initialLocked = await page.$$eval('.c-upgrade-btn--locked', (els) => els.l
 console.log('\n[2] 头部、深渊条、暂停');
 const headerText = await page.textContent('.l-game-header');
 ok(['奶茶币', '记忆点数', '净化点数', '觉醒点'].every((k) => headerText.includes(k)), '头部四资源齐全（中文名）');
-ok(/档\s*0\s*\/\s*3/.test(headerText), '档位显示 0/3');
+ok(/你现在在\s*奶茶店/.test(headerText), '头部显示所在地「你现在在奶茶店」');
 await page.click('.c-pause-btn');
 await page.waitForTimeout(120);
 ok(await page.evaluate(() => window.__dny.engine().s.paused), '点暂停后进入暂停');
