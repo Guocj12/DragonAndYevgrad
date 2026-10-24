@@ -6,6 +6,7 @@ import {
   ENGINE_VERSION, Engine, createInitialState, deserialize, serialize, tierCapLog,
 } from '../../src/engine.js';
 import { CHARACTERS, CHARACTER_ORDER, TIER_NAMES, TUNING } from '../../src/db.js';
+import { ACHIEVEMENTS } from '../../src/achievements.js';
 import { TreeView } from './tree.js';
 
 const SAVE_KEY = 'dny-save-v1';
@@ -159,6 +160,7 @@ function loadGame() {
 const TAB_DEFS = () => {
   const tabs = CHARACTER_ORDER.filter((id) => engine.s.unlocked.includes(id))
     .map((id) => ({ id, name: CHARACTERS[id].name, kind: 'char' }));
+  tabs.push({ id: 'achievements', name: '成就', kind: 'ach' });
   tabs.push({ id: 'board', name: '排行榜', kind: 'board' });
   tabs.push({ id: 'stats', name: '数据', kind: 'stats' });
   tabs.push({ id: 'options', name: '设置', kind: 'options' });
@@ -327,7 +329,16 @@ function treeSummaryVM() {
 function buildVM() {
   const page = { kind: 'char', charId: activeTab, sub: activeSub };
   const body = {};
-  if (activeTab === 'board') {
+  if (activeTab === 'achievements') {
+    page.kind = 'ach';
+    const got = new Set(engine.s.achievements || []);
+    body.ach = {
+      count: got.size,
+      total: ACHIEVEMENTS.length,
+      mul: `×${1 + got.size}`,
+      rows: ACHIEVEMENTS.map((a) => ({ id: a.id, name: a.name, desc: a.desc, got: got.has(a.id) })),
+    };
+  } else if (activeTab === 'board') {
     page.kind = 'board';
     body.board = {
       rows: boardRows.map((r, i) => ({
@@ -749,6 +760,22 @@ const app = new Vue({
           <div v-else-if="vm.activeSub === 'abyss'" class="l-abyss-page">
             <div class="l-section-title">深渊</div>
             <div class="c-dim-note">尚未开放。</div>
+          </div>
+        </template>
+
+        <template v-else-if="vm.page.kind === 'ach'">
+          <div class="l-section-title">
+            成就 <span class="c-hint">每个成就为全体角色提供 +100% 加成</span>
+          </div>
+          <div class="c-kv">
+            <div><span class="c-kv__k">已达成</span> <span class="c-kv__v">{{ vm.body.ach.count }} / {{ vm.body.ach.total }}</span></div>
+            <div><span class="c-kv__k">全体加成</span> <span class="c-kv__v">{{ vm.body.ach.mul }}</span></div>
+          </div>
+          <div class="l-ach-grid">
+            <div v-for="a in vm.body.ach.rows" :key="a.id" class="c-ach" :class="{ 'c-ach--got': a.got }">
+              <div class="c-ach__name">{{ a.got ? '✓ ' : '' }}{{ a.name }}</div>
+              <div class="c-ach__desc">{{ a.desc }}</div>
+            </div>
           </div>
         </template>
 

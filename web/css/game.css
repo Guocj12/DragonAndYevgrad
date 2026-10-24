@@ -678,3 +678,8 @@ body {
 .c-battle-float { font-size: 1.3rem; color: var(--color-bad); }
 .l-produce-row { display: flex; align-items: center; gap: 1rem; margin: 0.6rem 0 1rem; }
 .c-produce-btn { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.l-ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 0.8rem; max-width: 110rem; }
+.c-ach { padding: 0.7rem 0.9rem; border: 0.2rem solid #2a2f3a; border-radius: 0.5rem; opacity: 0.55; }
+.c-ach--got { border-color: var(--color-good); opacity: 1; }
+.c-ach__name { font-size: 1.4rem; font-weight: bold; }
+.c-ach__desc { font-size: 1.2rem; opacity: 0.8; margin-top: 0.2rem; }

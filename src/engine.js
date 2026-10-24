@@ -6,6 +6,7 @@
 import { Dec, D, formatScientific } from './num.js';
 import { CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, SHOP, TUNING, costOf, treeLayerCost } from './db.js';
 import { STORY } from './story.js';
+import { ACHIEVEMENTS } from './achievements.js';
 
 export const STATE_VERSION = 1;
 export const ENGINE_VERSION = 1;
@@ -56,6 +57,7 @@ export function createInitialState() {
       purifiedLog: -Infinity,   // 累计净化的深渊总量（log10）
       maxTier: 0,               // 到达过的最高档
       runLog: [],
+      manualProduce: 0,        // 手动生产次数
     },
     unlocked: ['249'],
     caches: { baiqiStock: Dec.zero(), drained: Dec.zero(), lastPeakProd: Dec.zero() },
@@ -67,6 +69,7 @@ export function createInitialState() {
     storyActive: false,     // 正在播放剧情（暂停的一种）
     settings: { skipReadStories: false },   // 设置：跳过已读剧情
     shop: { mp: 0, pp: 0 },                 // 万事屋：已兑换次数（价格随次数指数上涨）
+    achievements: [],                       // 已达成成就 id（永久保留）
   };
   for (const id of CHARACTER_ORDER) {
     s.chars[id] = {
@@ -223,6 +226,8 @@ export class Engine {
     const ctx = this.buildCtx();
     const g = (id) => s.generic[id] || 0;
 
+    const achMul = d(1 + ((s.achievements && s.achievements.length) || 0));   // 每个成就 +100% 全体加成
+
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
     genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.cycles), 'memory', `记忆累积（覆灭 ${ctx.cycles} 次）`);
@@ -348,7 +353,7 @@ export class Engine {
     let prodTotal = prod249Final.add(line.value());
     if (singularity) prodTotal = prodTotal.add(Dec.pow(Dec.max(s.mtc, 1), 0.5));
     // 通用乘区（奶茶翻倍、共鸣等）作用在全体产量上
-    prodTotal = prodTotal.mul(genericProd.value());
+    prodTotal = prodTotal.mul(genericProd.value()).mul(achMul);
 
     // ── 白琦 ──
     const powerBq = new Mult('power');
@@ -404,7 +409,7 @@ export class Engine {
     s.caches.rateBaiqi = rateBq.value();
     // 刚解锁时给一份基础剑意，使 0 级白琦的秒伤与 249 的净化量同量级；之后靠 tick 累积
     const stockBq = d(s.caches.baiqiStock || 0).add(prod249Base.mul(10));
-    const powerBqVal = stockBq.mul(powerBq.value());
+    const powerBqVal = stockBq.mul(powerBq.value()).mul(achMul);
     const dmgBqVal = powerBqVal.mul(0.1).mul(d(1 + critRate * (1 + critDmg))).mul(dragonFactor).mul(dmgBq.value());
 
     // ── 恒 ──
@@ -457,7 +462,7 @@ export class Engine {
       const ratio = Dec.div(Dec.max(s.S, d(1e-300)), Dec.pow10(ctx.y0));
       const lgRatio = Math.max(0, Dec.log10(ratio));
       // 深渊越强恒越强，但用对数幂次，避免直接指数化把平衡冲掉
-      hengPower = prod249Base.mul(d(10 * Math.pow(1 + lgRatio, 1 + 2 * alpha))).mul(powerMul.value());
+      hengPower = prod249Base.mul(d(10 * Math.pow(1 + lgRatio, 1 + 2 * alpha))).mul(powerMul.value()).mul(achMul);
       let eff = hengPower.mul(0.1).mul(dmgMul.value());
       if (atkSpeed > 20) eff = eff.mul(d(atkSpeed / 20));
       if (c.tree['hga6']) {
@@ -496,6 +501,7 @@ export class Engine {
       ppGain: d(ppGain).mul(d(ppTech249)),
       costMult,
       keepMtc,
+      achMul,
       startProdMult: startProd.value(),
       offlineSlow,
       autoTech: centerLv >= 1,
@@ -587,6 +593,9 @@ export class Engine {
     // 5. 自动购买
     this.runAutobuyers(dt);
     this.runAutoTrunks(dt);
+    // 5.5 成就
+    this.checkAchievements();
+
     // 6. 条件型剧情（每 0.5 秒轮询，一次只推一条）
     this.checkStoryConditions(dt);
     return null;
@@ -612,6 +621,7 @@ export class Engine {
   clickProduce() {
     const gain = this.bonuses().prodTotal;
     this.s.mtc = this.s.mtc.add(gain);
+    this.s.stats.manualProduce = (this.s.stats.manualProduce || 0) + 1;
     return gain;
   }
 
@@ -1004,6 +1014,19 @@ export class Engine {
     s.paused = s.storyQueue.length > 0 || s.storyActive;
     this.b = null;
     return out;
+  }
+
+  // 成就：每 tick 扫一遍未达成的（36 项，开销可忽略）
+  checkAchievements() {
+    const s = this.s;
+    if (!s.achievements) s.achievements = [];
+    for (const a of ACHIEVEMENTS) {
+      if (s.achievements.includes(a.id)) continue;
+      if (a.check(s, this)) {
+        s.achievements.push(a.id);
+        this.b = null;
+      }
+    }
   }
 
   // 待结算面板的「预计获得」，必须和 resolvePending 用同一套取整
