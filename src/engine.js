@@ -239,7 +239,7 @@ export class Engine {
 
     // ── 通用树（PP）──
     const genericProd = new Mult('prod');
-    genericProd.mul(Dec.pow(TUNING.memoryBase, ctx.tierCycles), 'memory', `记忆累积（本地区覆灭 ${ctx.tierCycles} 次）`);
+    genericProd.mul(Dec.pow(TUNING.memoryBase, s.stats.collapses), 'memory', `记忆累积（覆灭 ${s.stats.collapses} 次）`);
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
     let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
