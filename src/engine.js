@@ -546,7 +546,7 @@ export class Engine {
     const s = this.s;
     if (s.won) return null;
     if (s.paused || s.pending) return null;   // 暂停/待结算：不推进任何 tick
-    const b = this.computeBonuses();
+    const b = this.bonuses();   // 优先用缓存：只有买级/买科技等改变状态处才失效，避免每 tick 重算全部加成
     s.t += dt;
     s.stats.playTime += dt;
 

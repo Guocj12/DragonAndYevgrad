@@ -11,8 +11,8 @@ export function simulate({ strategy = 'value', maxHours = 24, dt = 0.5, verbose 
   const bot = makeBot(strategy);
   const maxTicks = Math.floor((maxHours * 3600) / dt);
   let tierStart = 0;
-  const tierTimes = [0, 0, 0, 0];
-  const tierRuns = [0, 0, 0, 0];
+  const tierTimes = new Array(8).fill(0);
+  const tierRuns = new Array(8).fill(0);
   let lastTier = 0;
   let tick = 0;
   for (; tick < maxTicks; tick++) {

@@ -85,7 +85,7 @@ export function makeBot(kind = 'value', opts = {}) {
   return function act(engine, dt) {
     const s = engine.s;
     timer += dt;
-    const period = opts.period || 1;
+    const period = opts.period || 5;   // 默认每 5 秒决策一次
     if (timer < period) return;
     timer = 0;
 

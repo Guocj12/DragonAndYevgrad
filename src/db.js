@@ -23,12 +23,12 @@ export const TUNING = {
   startFraction: 0.5,          // 旧的比例起点（已不再使用）
   abyssT0: envNum('DNY_T0', 10),         // 对数深渊的特征时间
   abyssFollow: envNum('DNY_AF', 0),   // 深渊增长率跟随玩家产量增速的权重
-  collapseProgress: envNum('DNY_CP2', 0.3),   // 每覆灭一次，本档深渊起点下降的比例
+  collapseProgress: envNum('DNY_CP2', 0.1),   // 每覆灭一次，本档深渊起点下降的比例
   startGap: envNum('DNY_SG', 4),   // 进档时深渊比玩家产量高出的数量级
   firstTierStartLog: 12,       // 奶茶店的深渊起点（1e12）
   tierExponents: [249, 2492, 24920, 249209, 2492094, 24920949, 249209494, 2492094949],
   tierMantissa: 2.49,
-  maxTier: 7,
+  maxTier: 3,   // 只做前四档；后四档留框架（tierExponents 已就位）
   tickSeconds: 0.05,
   mpPerCollapse: 1,
   mpPurifyFactor: 8,          // 旧的净化率系数（保留兼容，已不参与结算）
@@ -67,11 +67,11 @@ const upCostMult = (i) => UP_COST_MULT(i);
 // 价格也是幂：1 + 0.5·l^2.5（幂次高于效果的 l^1.5，所以越买越贵、自然收敛，但不会一买就卡死）
 const UP_POWER_COEFF = envNum('DNY_PC', 0.1);   // 幂效果系数
 const UP_EFFECT_POW = envNum('DNY_EP', 1.2);    // 效果幂次
-const UP_KAPPA = envNum('DNY_K', 1.005);         // 每级效果的额外指数（>1 时产量在轮内加速）
+const UP_KAPPA = envNum('DNY_K', 1.0003);         // 每级效果的额外指数（>1 时产量在轮内加速）
 const UP_COST_COEFF = envNum('DNY_CC', 0.5);    // 价格系数
 const UP_COST_POW = envNum('DNY_CP', 3);        // 价格幂次
 // 价格与「本项效果」同阶：每秒能买约 1/PRICE_PER_LEVEL 级，产量因此连续爬升而不是跳跃
-const PRICE_PER_LEVEL = envNum('DNY_PPL', 1);
+const PRICE_PER_LEVEL = envNum('DNY_PPL', 10);
 const upCost = (i) => (l) => Dec.mul(upBase(i), d(((1 + UP_POWER_COEFF * Math.pow(l, UP_EFFECT_POW)) * Math.pow(UP_KAPPA, l)) / PRICE_PER_LEVEL));
 
 // ─────────────────────────────────────────────
