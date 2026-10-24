@@ -23,7 +23,9 @@ export function tierCap(tier) {
   return Dec.pow10(tierCapLog(tier));
 }
 export function tierStartLog(tier, startAbyssMult = 1) {
-  return tierCapLog(tier) * TUNING.startFraction + Math.log10(startAbyssMult);
+  // 起点衔接上一档的上限：冲进新地方时，深渊就在你刚达到的高度附近，而不是跳 1000 个数量级
+  const base = tier <= 0 ? TUNING.firstTierStartLog : tierCapLog(tier - 1);
+  return base + Math.log10(startAbyssMult);
 }
 // 深渊本 tick 的对数增速（数量级/秒）：dy/dt = D·e^(t/τ)/τ
 export function abyssRate(tier, t) {
