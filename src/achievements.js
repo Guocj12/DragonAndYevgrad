@@ -1,72 +1,58 @@
 // src/achievements.js — 成就表（数据驱动）
-// 每个成就永久保留（属于 249 的记忆库，覆灭不清空），并为全体角色提供 +100% 加成：
+// 每个成就永久保留（249 的记忆库，覆灭不清空），并为全体角色提供 +100%：
 // 达成 N 个 → 全产量 / 战力 ×(1 + N)。
 //
-// check(s, engine) 返回 true 即达成。引擎每 0.5 秒扫一次未达成的。
+// 目前只列到「奶茶店」这一档能碰到的东西；后面的档位等玩到再加。
 
 import { Dec } from './num.js';
 
 const lg = (v) => Dec.log10(v);
-const sumUp = (arr) => arr.reduce((a, b) => a + b, 0);
+const up = (s, id, i) => s.chars[id].upgrades[i] || 0;
 
 export const ACHIEVEMENTS = [
+  // ── 249 第一次买下每个升级 ──
+  { id: 'b1', name: '开张', desc: '第一次买下「灌装线」', check: (s) => up(s, '249', 0) >= 1 },
+  { id: 'b2', name: '换配方', desc: '第一次买下「配方改良」', check: (s) => up(s, '249', 1) >= 1 },
+  { id: 'b3', name: '接喷嘴', desc: '第一次买下「净化喷嘴」', check: (s) => up(s, '249', 2) >= 1 },
+  { id: 'b4', name: '对表', desc: '第一次买下「时钟校准」', check: (s) => up(s, '249', 3) >= 1 },
+  { id: 'b5', name: '串线', desc: '第一次买下「产线联动」', check: (s) => up(s, '249', 4) >= 1 },
+  { id: 'b6', name: '结晶', desc: '第一次买下「记忆结晶」', check: (s) => up(s, '249', 5) >= 1 },
+  { id: 'b7', name: '高峰', desc: '第一次买下「高峰时段」', check: (s) => up(s, '249', 6) >= 1 },
+  { id: 'b8', name: '总控', desc: '第一次买下「产线总控」', check: (s) => up(s, '249', 7) >= 1 },
+
+  // ── 全自动 ──
+  { id: 'auto', name: '全自动', desc: '自动采购解锁到 8 级：8 个升级全部自动购买', check: (s) => s.chars['249'].techs[0] >= 8 },
+
   // ── 覆灭 ──
   { id: 'c1', name: '第一次关门', desc: '覆灭 1 次', check: (s) => s.stats.collapses >= 1 },
-  { id: 'c5', name: '熟门熟路', desc: '覆灭 5 次', check: (s) => s.stats.collapses >= 5 },
-  { id: 'c20', name: '老主顾', desc: '覆灭 20 次', check: (s) => s.stats.collapses >= 20 },
-  { id: 'c50', name: '习惯性重开', desc: '覆灭 50 次', check: (s) => s.stats.collapses >= 50 },
-  { id: 'c100', name: '第 100 次开门', desc: '覆灭 100 次', check: (s) => s.stats.collapses >= 100 },
-  { id: 'c300', name: '执念', desc: '覆灭 300 次', check: (s) => s.stats.collapses >= 300 },
-
-  // ── 守护 ──
-  { id: 'g1', name: '第一次守住', desc: '守护 1 次', check: (s) => s.stats.guards >= 1 },
-  { id: 'g10', name: '守夜人', desc: '守护 10 次', check: (s) => s.stats.guards >= 10 },
-  { id: 'g50', name: '城墙', desc: '守护 50 次', check: (s) => s.stats.guards >= 50 },
-  { id: 'g100', name: '不眠', desc: '守护 100 次', check: (s) => s.stats.guards >= 100 },
-
-  // ── 地名 ──
-  { id: 't1', name: '走出店门', desc: '到达耶维城', check: (s) => s.stats.maxTier >= 1 },
-  { id: 't2', name: '越过城墙', desc: '到达飞龙国', check: (s) => s.stats.maxTier >= 2 },
-  { id: 't3', name: '大陆尽头', desc: '到达奶茶大陆', check: (s) => s.stats.maxTier >= 3 },
-
-  // ── 产量 ──
-  { id: 'p6', name: '一百万杯', desc: '产量达到 1e6/s', check: (s, e) => lg(e.bonuses().prodTotal) >= 6 },
-  { id: 'p30', name: '装不下了', desc: '产量达到 1e30/s', check: (s, e) => lg(e.bonuses().prodTotal) >= 30 },
-  { id: 'p100', name: '数字而已', desc: '产量达到 1e100/s', check: (s, e) => lg(e.bonuses().prodTotal) >= 100 },
-  { id: 'p200', name: '记账的人', desc: '产量达到 1e200/s', check: (s, e) => lg(e.bonuses().prodTotal) >= 200 },
+  { id: 'c10', name: '熟门熟路', desc: '覆灭 10 次', check: (s) => s.stats.collapses >= 10 },
+  { id: 'c249', name: '不觉得无聊吗', desc: '覆灭 249 次', check: (s) => s.stats.collapses >= 249 },
 
   // ── 单轮 ──
-  { id: 'r600', name: '值班十分钟', desc: '单轮坚持 600 秒', check: (s) => s.t >= 600 },
-  { id: 'r1800', name: '通宵', desc: '单轮坚持 1800 秒', check: (s) => s.t >= 1800 },
+  { id: 't250', name: '超越249', desc: '在一轮里坚持 250 秒', check: (s) => s.t >= 250 },
+
+  // ── 守护四片地方 ──
+  { id: 'g0', name: '守住奶茶店', desc: '第一次在奶茶店净化', check: (s) => s.stats.tierGuards[0] >= 1 },
+  { id: 'g1', name: '守住耶维城', desc: '第一次在耶维城净化', check: (s) => s.stats.tierGuards[1] >= 1 },
+  { id: 'g2', name: '守住飞龙国', desc: '第一次在飞龙国净化', check: (s) => s.stats.tierGuards[2] >= 1 },
+  { id: 'g3', name: '守住奶茶大陆', desc: '第一次在奶茶大陆净化', check: (s) => s.stats.tierGuards[3] >= 1 },
+
+  // ── 产速 ──
+  { id: 'p6', name: '一百万杯', desc: '产速达到 1e6/s', check: (s, e) => lg(e.bonuses().prodTotal) >= 6 },
+  { id: 'p49', name: '二四九', desc: '产速达到 2e49/s', check: (s, e) => lg(e.bonuses().prodTotal) >= Math.log10(2) + 49 },
+  { id: 'p249', name: '到顶了', desc: '产速达到 2.49e249/s', check: (s, e) => lg(e.bonuses().prodTotal) >= Math.log10(2.49) + 249 },
 
   // ── 手动 ──
-  { id: 'm100', name: '手摇', desc: '手动生产 100 次', check: (s) => (s.stats.manualProduce || 0) >= 100 },
-  { id: 'm1000', name: '手抽筋', desc: '手动生产 1000 次', check: (s) => (s.stats.manualProduce || 0) >= 1000 },
-
-  // ── 升级总等级 ──
-  { id: 'u100', name: '产线成型', desc: '全角色升级总等级 100', check: (s) => sumUp(s.chars['249'].upgrades) + sumUp(s.chars.yewei.upgrades) + sumUp(s.chars.baiqi.upgrades) + sumUp(s.chars.heng.upgrades) >= 100 },
-  { id: 'u500', name: '流水线', desc: '全角色升级总等级 500', check: (s) => sumUp(s.chars['249'].upgrades) + sumUp(s.chars.yewei.upgrades) + sumUp(s.chars.baiqi.upgrades) + sumUp(s.chars.heng.upgrades) >= 500 },
-
-  // ── 科技树 ──
-  { id: 'k1', name: '第一片叶子', desc: '解锁 1 个树节点', check: (s) => Object.keys(s.generic).filter((k) => s.generic[k] > 0).length + Object.values(s.chars).reduce((a, c) => a + Object.keys(c.tree).length, 0) >= 1 },
-  { id: 'k5', name: '枝头', desc: '解锁 5 个树节点', check: (s) => Object.keys(s.generic).filter((k) => s.generic[k] > 0).length + Object.values(s.chars).reduce((a, c) => a + Object.keys(c.tree).length, 0) >= 5 },
-  { id: 'k10', name: '成荫', desc: '解锁 10 个树节点', check: (s) => Object.keys(s.generic).filter((k) => s.generic[k] > 0).length + Object.values(s.chars).reduce((a, c) => a + Object.keys(c.tree).length, 0) >= 10 },
-  { id: 'k20', name: '记忆的形状', desc: '解锁 20 个树节点', check: (s) => Object.keys(s.generic).filter((k) => s.generic[k] > 0).length + Object.values(s.chars).reduce((a, c) => a + Object.keys(c.tree).length, 0) >= 20 },
-
-  // ── 资源 ──
-  { id: 'mp50', name: '记忆点', desc: '持有 50 记忆点数', check: (s) => Dec.gte(s.mp, 50) },
-  { id: 'mp500', name: '记忆库', desc: '持有 500 记忆点数', check: (s) => Dec.gte(s.mp, 500) },
-  { id: 'pp50', name: '净化者', desc: '持有 50 净化点数', check: (s) => Dec.gte(s.pp, 50) },
-  { id: 'pp500', name: '净化流水', desc: '持有 500 净化点数', check: (s) => Dec.gte(s.pp, 500) },
-  { id: 'ap10', name: '觉醒', desc: '持有 10 觉醒点', check: (s) => Dec.gte(s.ap, 10) },
-  { id: 'ap20', name: '全点满', desc: '持有 20 觉醒点', check: (s) => Dec.gte(s.ap, 20) },
+  { id: 'm249', name: '手摇 249 次', desc: '点击生产按钮 249 次（长按整段只算一次）', check: (s) => (s.stats.manualProduce || 0) >= 249 },
 
   // ── 万事屋 ──
-  { id: 's10', name: '回头客', desc: '在万事屋兑换 10 次', check: (s) => (s.shop.mp + s.shop.pp) >= 10 },
-  { id: 's100', name: '大客户', desc: '在万事屋兑换 100 次', check: (s) => (s.shop.mp + s.shop.pp) >= 100 },
+  { id: 'shop', name: '歪？', desc: '结识耶维奇后，在万事屋兑换一次记忆点数或净化点数', check: (s) => s.unlocked.includes('yewei') && (s.shop.mp + s.shop.pp) >= 1 },
 
-  // ── 通关 ──
-  { id: 'win', name: '井口的光', desc: '在一轮里净化到最高上限', check: (s) => s.won },
+  // ── 等级 ──
+  { id: 'lv249', name: '249 级', desc: '任意一个升级到达 249 级', check: (s) => ['249', 'yewei', 'baiqi', 'heng'].some((id) => s.chars[id].upgrades.some((lv) => lv >= 249)) },
+
+  // ── 摆烂 ──
+  { id: 'idle', name: '摆烂', desc: '一整轮什么都不做，任由耶维城覆灭（自动购买不算）', check: (s) => s.stats.idleCollapses >= 1 },
 ];
 
 export const ACHIEVEMENT_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));

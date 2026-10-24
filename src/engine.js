@@ -44,7 +44,7 @@ export function createInitialState() {
     ap: Dec.zero(),
     t: 0,
     S: Dec.zero(),
-    run: { peakProd: Dec.zero(), bestPurify: 0 },
+    run: { peakProd: Dec.zero(), bestPurify: 0, manualActions: 0 },
     chars: {},
     generic: {},
     stats: {
@@ -57,7 +57,8 @@ export function createInitialState() {
       purifiedLog: -Infinity,   // 累计净化的深渊总量（log10）
       maxTier: 0,               // 到达过的最高档
       runLog: [],
-      manualProduce: 0,        // 手动生产次数
+      manualProduce: 0,        // 手动生产次数（长按整段只算一次）
+      idleCollapses: 0,        // 一整轮没有任何手动操作的覆灭次数
     },
     unlocked: ['249'],
     caches: { baiqiStock: Dec.zero(), drained: Dec.zero(), lastPeakProd: Dec.zero() },
@@ -621,7 +622,6 @@ export class Engine {
   clickProduce() {
     const gain = this.bonuses().prodTotal;
     this.s.mtc = this.s.mtc.add(gain);
-    this.s.stats.manualProduce = (this.s.stats.manualProduce || 0) + 1;
     return gain;
   }
 
@@ -1002,6 +1002,7 @@ export class Engine {
         s.ap = intRound(s.ap.add(ap));
         out.ap = ap;
       }
+      if ((s.run.manualActions || 0) === 0) s.stats.idleCollapses = (s.stats.idleCollapses || 0) + 1;
       s.stats.runLog.push({ kind: 'collapse', tier, t: Math.round(s.t), purify: Math.round(s.run.bestPurify * 1000) / 1000 });
       if (s.stats.runLog.length > 5000) s.stats.runLog.shift();
       s.tier = 0;

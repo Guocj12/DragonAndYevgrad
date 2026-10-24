@@ -405,6 +405,8 @@ function doBuy(charId, idx) {
       if (engine.s.chars[charId].upgrades[idx] >= (u.maxLevel ?? Infinity)) say('已经满级了');
       else say('奶茶币还不够买下一级');
     }
+  } else {
+    engine.s.run.manualActions = (engine.s.run.manualActions || 0) + 1;
   }
 }
 
@@ -423,6 +425,22 @@ function act(action, payload) {
     case 'produce': {
       const gain = engine.clickProduce();
       say(`生产了 ${fmt(gain)} 杯奶茶`);
+      break;
+    }
+    case 'debug': {
+      const k = payload.kind;
+      if (k === 'money') { engine.s.mtc = engine.s.mtc.add(Dec.from('1e10')); say('奶茶币 +1e10'); }
+      else if (k === 'rich') { engine.s.mtc = engine.s.mtc.add(Dec.from('1e100')); say('奶茶币 +1e100'); }
+      else if (k === 'mp') { engine.s.mp = engine.s.mp.add(Dec.from(100)); say('记忆点数 +100'); }
+      else if (k === 'pp') { engine.s.pp = engine.s.pp.add(Dec.from(100)); say('净化点数 +100'); }
+      else if (k === 'ap') { engine.s.ap = engine.s.ap.add(Dec.from(10)); say('觉醒点 +10'); }
+      else if (k === 'unlock') {
+        ['yewei', 'baiqi', 'heng'].forEach((id) => { if (!engine.s.unlocked.includes(id)) engine.s.unlocked.push(id); });
+        say('已解锁全部角色');
+      } else if (k === 'guard') { engine.s.S = Dec.zero(); engine.tick(0.5); say('强制守护'); }
+      else if (k === 'collapse') { engine.s.S = Dec.pow10(tierCapLog(engine.s.tier)); engine.tick(0.5); say('强制覆灭'); }
+      else if (k === 'fast') { engine.advance(600); say('快进 10 分钟'); }
+      engine.b = null;
       break;
     }
     case 'shopBuy': {
@@ -516,6 +534,7 @@ function act(action, payload) {
     case 'treeFit': if (treeView) treeView.fitTree(); break;
     default: break;
   }
+  if (engine && engine.checkAchievements) engine.checkAchievements();   // 操作后立刻结算成就，暂停时也生效
   app.render();
 }
 
@@ -594,6 +613,8 @@ const app = new Vue({
     stopProduce() {
       if (!producing) return;
       producing = false;
+      engine.s.stats.manualProduce = (engine.s.stats.manualProduce || 0) + 1;   // 长按整段只算一次
+      engine.s.run.manualActions = (engine.s.run.manualActions || 0) + 1;
       say(`生产了 ${fmt(engine.bonuses().prodTotal)} 杯/次 × 20 次/秒`);
       app.render();
     },
@@ -852,6 +873,21 @@ const app = new Vue({
           </div>
           <div class="l-options-row">
             <button class="o-primary-btn" @click="act('syncNow')">立即同步</button>
+          </div>
+
+          <div class="l-section-title">调试 <span class="c-hint">只用来快速验证后面的内容，正式游玩不用点</span></div>
+          <div class="l-options-row">
+            <button class="o-primary-btn" @click="act('debug', { kind: 'money' })">奶茶币 +1e10</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'rich' })">奶茶币 +1e100</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'mp' })">记忆点数 +100</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'pp' })">净化点数 +100</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'ap' })">觉醒点 +10</button>
+          </div>
+          <div class="l-options-row">
+            <button class="o-primary-btn" @click="act('debug', { kind: 'unlock' })">解锁全部角色</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'guard' })">立即净化</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'collapse' })">立即覆灭</button>
+            <button class="o-primary-btn" @click="act('debug', { kind: 'fast' })">快进 10 分钟</button>
           </div>
 
           <div class="l-section-title">存档</div>
