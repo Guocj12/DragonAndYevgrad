@@ -49,9 +49,9 @@ push('');
 // ── 升级 ──
 push('## 一·补、档位地名');
 push('');
-push('| 档 | 地名 | 上限 |');
-push('|---|---|---|');
-TIER_NAMES.forEach((name, i) => push(`| ${i} | ${name} | 2.49 × 10^${TUNING.tierExponents[i]} |`));
+push('| 地名 | 上限 |');
+push('|---|---|');
+TIER_NAMES.forEach((name, i) => push(`| ${name} | 2.49 × 10^${TUNING.tierExponents[i]} |`));
 push('');
 
 push('## 二、角色升级（每角色 8 项，全部无等级上限）');
