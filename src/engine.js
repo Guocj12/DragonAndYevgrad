@@ -237,8 +237,8 @@ export class Engine {
     const genericProd = new Mult('prod');
     const genericEta = new Mult('eta');
     const genericDmg = new Mult('damage');
-    let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = Math.pow(0.88, g('g3'));
-    let offlineSlow = 0.25, autoTech = false, lastStand = false, centerLv = 0;
+    let mpGain = Dec.one(), ppGain = Dec.one(), techCostMult = 1, costMult = 1   /* 树加成已清空 */;
+    let offlineSlow = 1, autoTech = false, lastStand = false, centerLv = 0;
     for (const n of GENERIC_TREE) {
       const lv = g(n.id);
       if (!lv) continue;
@@ -280,7 +280,6 @@ export class Engine {
         if (lv <= 0) continue;
         if (u.kind === 'prod') {
           prod249.mul(u.mul(lv, ctx), u.id, u.name);
-          if (u.id === '249u8') eta.mul(d(1 + 0.1 * lv), '249u8e', '产线总控·净化');
         } else if (u.kind === 'eta') eta.mul(u.mul(lv, ctx), u.id, u.name);
         else if (u.kind === 'speed') speed.mul(u.mul(lv, ctx), u.id, u.name);
       }
@@ -291,7 +290,7 @@ export class Engine {
         if (lv <= 0) continue;
         if (tc.kind === 'prodByTime') prod249.mul(d(1 + 0.05 * lv * (ctx.t / 60)), tc.id, tc.name);
         else if (tc.kind === 'mpByTime') mpTech249 *= 1 + 0.2 * lv * (ctx.t / 60);
-        else if (tc.kind === 'ppByEarliness') ppTech249 *= 1 + 0.2 * lv * Math.max(0, (TUNING.fillSeconds - ctx.t)) / 60;
+        else if (tc.kind === 'ppByEarliness') { /* 已清空 */ }
       }
       const nt = ctx.nTree['249'];
       for (const node of def.tree) {
@@ -423,9 +422,9 @@ export class Engine {
     critRate = Math.min(1, critRate);
     s.caches.rateBaiqi = rateBq.value();
     // 刚解锁时给一份基础剑意，使 0 级白琦的秒伤与 249 的净化量同量级；之后靠 tick 累积
-    const stockBq = d(s.caches.baiqiStock || 0).add(prod249Base.mul(10));
+    const stockBq = d(s.caches.baiqiStock || 0).add(prod249Base.mul(1));
     const powerBqVal = stockBq.mul(powerBq.value()).mul(achMul);
-    const dmgBqVal = powerBqVal.mul(0.1).mul(d(1 + critRate * (1 + critDmg))).mul(dragonFactor).mul(dmgBq.value());
+    const dmgBqVal = powerBqVal.mul(1).mul(d(1 + critRate * (1 + critDmg))).mul(dragonFactor).mul(dmgBq.value());
 
     // ── 恒 ──
     let dmgHeng = Dec.zero();
