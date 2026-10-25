@@ -248,16 +248,16 @@ export class Engine {
       const lv = g(n.id);
       if (!lv) continue;
       switch (n.id) {
-        case 'g1': genericProd.mul(Dec.pow(d(1 + 0.1 * ctx.sumLAll), 0.5), n.id, n.name); break;
-        case 'g2': genericEta.mul(Dec.pow(d(1 + 0.1 * ctx.sumLAll), 0.5), n.id, n.name); break;
-        case 'g5': lastStand = true; break;
-        case 'g7': centerLv = lv; break;
-        case 'g8': genericProd.mul(Dec.pow(2, lv), n.id, n.name); break;
-        case 'g9': genericEta.mul(Dec.pow(10, lv), n.id, n.name); break;
-        case 'g10': mpGain = mpGain.mul(Dec.pow(5, lv)); break;
-        case 'g11': ppGain = ppGain.mul(Dec.pow(5, lv)); break;
-        case 'g12': genericDmg.mul(Dec.pow(d(1 + 0.5 * lv), 0.5 * lv), n.id, n.name); break;
-        case 'g13': techCostMult *= Math.pow(0.97, lv); break;
+        case 'g1': break;
+        case 'g2': break;
+        case 'g5': break;
+        case 'g7': break;
+        case 'g8': break;
+        case 'g9': break;
+        case 'g10': break;
+        case 'g11': break;
+        case 'g12': break;
+        case 'g13': break;
         default: break;
       }
     }
@@ -283,9 +283,6 @@ export class Engine {
         const u = def.upgrades[i];
         const lv = c.upgrades[i];
         if (lv <= 0) continue;
-        { const rr = tierCapLog(s.tier) / TUNING.aimDivisor; const base = Dec.pow10(rr * lv); const w = Dec.pow(d(TUNING.upTierWeight), i); (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(base.mul(w), u.id + 'aim', u.name); }
-        // 越靠后的升级越强：第 i 项额外 ×3^i
-        if (i > 0) (u.kind === 'prod' ? prod249 : u.kind === 'eta' ? eta : speed).mul(d(Math.pow(TUNING.upTierWeight, i)), u.id + 'w', u.name + '·顺位');
         if (u.kind === 'prod') {
           prod249.mul(u.mul(lv, ctx), u.id, u.name);
           if (u.id === '249u8') eta.mul(d(1 + 0.1 * lv), '249u8e', '产线总控·净化');
@@ -306,13 +303,13 @@ export class Engine {
         if (!c.tree[node.id]) continue;
         switch (node.id) {
           case '249a1': keepMtc = 0.2; break;
-          case '249a2': speed.mul(d(1 + 0.15 * nt), node.id, node.name); break;
+          case '249a2': break;
           case '249a3': mpTechBonus *= (1 + ctx.cycles / 4); break;
-          case '249a4': eta.mul(d(1 + 0.8 * ctx.progress), node.id, node.name); break;
+          case '249a4': break;
           case '249a5': startProd.mul(d(1 + 0.5 * nt), node.id, node.name); break;
-          case '249a7': prod249.mul(Dec.pow(d(1 + 0.01 * ctx.sumLAll), 0.5), node.id, node.name); break;
-          case '249a8': prod249.mul(d(Math.min(2, 1 + ctx.t / 300)), node.id, node.name); break;
-          case '249a9': prod249.mul(d(2), node.id, node.name); singularity = true; break;
+          case '249a7': break;
+          case '249a8': break;
+          case '249a9': break;
           default: break;
         }
       }
@@ -351,11 +348,11 @@ export class Engine {
         switch (node.id) {
           case 'ywa1': line.mul(d(1 + 0.2 * ctx.cycles), node.id, node.name); break;
           case 'ywa2': this.abyssRateMult = Math.pow(0.9, nt); break;
-          case 'ywa3': costMult *= Math.pow(0.9, nt); break;
+          case 'ywa3': break;
           case 'ywa4': this.baiqiPowerTree = 1 + 0.3 * ctx.sumL.yewei * nt; break;
-          case 'ywa5': prod249.mul(d(1 + 0.2 * nt), node.id, node.name); break;
+          case 'ywa5': break;
           case 'ywa6': line.mul(d(1 + 0.1 * ctx.sumL.yewei), node.id, node.name); break;
-          case 'ywa7': mtcGain.mul(d(1 + 0.5 * ctx.cycles), node.id, node.name); break;
+          case 'ywa7': break;
           case 'ywa8': line.mul(d(1 + 0.5 * nt), node.id, node.name); break;
           case 'ywa9': {
             line.mul(d(1 + 0.15 * Math.max(0, Dec.log10(Dec.max(prod249.value(), 1)))), node.id, node.name);
@@ -467,14 +464,14 @@ export class Engine {
       for (const node of def.tree) {
         if (!c.tree[node.id]) continue;
         switch (node.id) {
-          case 'hga1': powerMul.mul(d(1 + 0.2 * ctx.sumLAll), node.id, node.name); break;
+          case 'hga1': break;
           case 'hga2': alphaAdd += 0.03 * nt; break;
-          case 'hga3': atkMul.mul(d(1 + 0.2 * nt), node.id, node.name); break;
-          case 'hga4': dmgMul.mul(Dec.pow(d(1 + 1.5 * ctx.progress), 2), node.id, node.name); break;
-          case 'hga5': alphaMul *= d(1 + 0.1 * ctx.sumL.heng).toNumber(); break;
-          case 'hga7': powerMul.mul(Dec.pow(d(1 + ctx.t / 120), 0.5), node.id, node.name); break;
-          case 'hga8': powerMul.mul(d(1 + 0.5 * ctx.cycles), node.id, node.name); break;
-          case 'hga9': atkMul.mul(d(Math.min(3, 1 + ctx.t / 120)), node.id, node.name); break;
+          case 'hga3': break;
+          case 'hga4': break;
+          case 'hga5': break;
+          case 'hga7': break;
+          case 'hga8': break;
+          case 'hga9': break;
           default: break;
         }
       }
