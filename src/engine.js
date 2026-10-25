@@ -7,6 +7,7 @@ import { Dec, D, formatScientific } from './num.js';
 import { CHARACTERS, CHARACTER_ORDER, GENERIC_TREE, SHOP, TUNING, costOf, treeLayerCost } from './db.js';
 import { STORY } from './story.js';
 import { ACHIEVEMENTS } from './achievements.js';
+import { RUN_TARGET_LOG } from './targets.js';
 
 export const STATE_VERSION = 1;
 export const ENGINE_VERSION = 1;
@@ -572,7 +573,15 @@ export class Engine {
     s.caches.baiqiStock = d(s.caches.baiqiStock || 0).add((s.caches.rateBaiqi || Dec.zero()).mul(dt));
 
     // 2. 战斗结算（净化 + 战斗伤害）
-    const totalDmg = b.purifyTea.add(b.dmgTotal);   // 真实输出
+    let totalDmg = b.purifyTea.add(b.dmgTotal);
+    // ── 分段函数（200 段表）：本档第 N 轮的净化量目标，逐段写入 targets.js ──
+    {
+      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
+      const idx = Math.min(RUN_TARGET_LOG.length - 1, s.tier * 25 + (n - 1));
+      const targetTotalLog = RUN_TARGET_LOG[idx];
+      const expectTicks = Math.max(1, (TUNING.tauByTier[s.tier] || TUNING.tau) / dt);
+      totalDmg = Dec.pow10(targetTotalLog - Math.log10(expectTicks));
+    }
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
