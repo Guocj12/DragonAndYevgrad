@@ -574,14 +574,7 @@ export class Engine {
 
     // 2. 战斗结算（净化 + 战斗伤害）
     let totalDmg = b.purifyTea.add(b.dmgTotal);
-    // ── 分段函数（200 段表）：本档第 N 轮的净化量目标，逐段写入 targets.js ──
-    {
-      const n = ((s.stats.tierCollapses && s.stats.tierCollapses[s.tier]) || 0) + 1;
-      const idx = Math.min(RUN_TARGET_LOG.length - 1, s.tier * 25 + (n - 1));
-      const targetTotalLog = RUN_TARGET_LOG[idx];
-      const expectTicks = Math.max(1, (TUNING.tauByTier[s.tier] || TUNING.tau) / dt);
-      totalDmg = Dec.pow10(targetTotalLog - Math.log10(expectTicks));
-    }
+    // （净化量由真实输出决定，不再用段表覆盖）
     if (Dec.gt(totalDmg, 0) && Dec.gt(s.S, 0)) {
       const dmg = totalDmg.mul(dt);
       s.S = Dec.sub(s.S, dmg);
@@ -1009,7 +1002,7 @@ export class Engine {
     // MP：覆灭与守护都给（整数）
     const purifyMag = Math.max(0, s.run.purifiedLog || 0);   // 本轮净化掉的数量级
     // 慢启动：净化量级 12 → 4 MP，净化量级 125 → 1.8e6 MP
-    const base = Dec.add(TUNING.mpPerCollapse, Dec.pow10(purifyMag / TUNING.mpMagnitudeDiv));
+    const base = Dec.add(TUNING.mpPerCollapse, Dec.pow10(purifyMag / 4.5));
     const mp = intRound(Dec.mul(base, b.mpGain));   // 四舍五入：1.8 倍也给 2 点，避免 1 级科技毫无手感
     s.mp = intRound(s.mp.add(mp));
     out.mp = mp;
