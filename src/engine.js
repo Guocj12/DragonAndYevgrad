@@ -30,12 +30,7 @@ export function tierStartLog(tier, startAbyssMult = 1) {
 }
 // 深渊本 tick 的对数增速（数量级/秒）：dy/dt = D·e^(t/τ)/τ
 export function abyssRate(tier, t) {
-  // 对数型：logS(t) = 起点 + 跨度 × ln(1+t/t0)/ln(1+T/t0)
-  // 开局涨得猛（玩家打不过），之后越来越慢（玩家能压住），积分到 T 时正好涨满跨度。
-  const span = tierCapLog(tier) - tierStartLog(tier);
-  const T = TUNING.tauByTier[tier] ?? TUNING.tau;
-  const t0 = TUNING.abyssT0;
-  return span / (Math.log(1 + T / t0) * (t + t0));
+  return 0;   // 增长模型已清空
 }
 
 // ─────────────────────────────────────────────
@@ -593,11 +588,7 @@ export class Engine {
         s.mtc = s.mtc.add(add);
       }
     }
-    if (Dec.lte(s.S, 0)) {
-      this.enterPending('guard');
-      if (b.autoGuard) { s.storyQueue.length = 0; this.resolvePending(true); return null; }
-      return 'guard';
-    }
+    // 覆灭 / 守护判定已清空
     const p = Math.max(0, Math.min(1, 1 - Dec.log10(s.S) / Math.max(1, b.ctx.y0)));
     if (p > s.run.bestPurify) s.run.bestPurify = p;
 
@@ -625,7 +616,7 @@ export class Engine {
 
     // 4. 边界判定
     if (Dec.gte(s.S, tierCap(s.tier))) {
-      this.enterPending('collapse');
+          // 覆灭判定已清空
       if (b.autoTech) { s.storyQueue.length = 0; this.resolvePending(true); return null; }
       return 'collapse';
     }
