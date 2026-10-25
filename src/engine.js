@@ -296,7 +296,7 @@ export class Engine {
       for (const node of def.tree) {
         if (!c.tree[node.id]) continue;
         switch (node.id) {
-          case '249a1': keepMtc = 0.2; break;
+          case '249a1': break;   // 已清空
           case '249a2': break;
           case '249a3': mpTechBonus *= (1 + ctx.cycles / 4); break;
           case '249a4': break;
