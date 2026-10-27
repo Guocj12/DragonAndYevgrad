@@ -58,7 +58,14 @@ const check = (label, val) => {
 };
 check('净化力', v.powerDisplay);
 check('深渊', v.pressureDisplay);
-check('mtc', v.currencyDisplay);
+// mtc 一律显示整数（内部数值不变，只是显示取整）
+const mtcShown = v.currencyDisplay < 1 ? v.currencyDisplay.toFixed(2) : String(Math.round(v.currencyDisplay));
+ok(text.includes(mtcShown), `HUD 显示 mtc = ${mtcShown}（整数）`);
+// 一根双色进度条、两个对数百分比
+ok(await page.locator('.c-dual-bar').count() === 1, '只有一根进度条');
+ok(await page.locator('.c-dual-bar__power').count() === 1, '净化力色块存在');
+ok(await page.locator('.c-dual-bar__pressure').count() === 1, '深渊色块存在');
+ok(!/e-\d/.test(text), '页面上没有 ae-n 形式的数字');
 ok(text.includes('奶茶店'), '档名可见');
 ok(/档\s*1|第\s*1\s*档|1\s*\/\s*4/.test(text), '档号可见');
 

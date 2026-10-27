@@ -24,13 +24,32 @@ const SYNC_MS = 60000;        // 每分钟自动上传一次（存档 + 排行�
 const OFFLINE_CAP = 8 * 3600; // 离线最多补算 8 小时（§9.2：补算必须逐 tick 重放）
 
 // ───────────────────────────── 数字显示 ─────────────────────────────
-// 全部走 src/num.js 的 formatScientific；倍率类（0<x<1）补一个可读的小数字面量，
-// 避免 "5e-1" 这种反直觉写法。mp/pp 是整数，直接显示。
-const fmt = (v) => formatScientific(v);
-const fmtRatio = (v) => (Number.isFinite(v) && v > 0 && v < 1
-  ? (Math.round(v * 1000) / 1000).toString()
-  : fmt(v));
-const money = (v) => (Number.isFinite(v) ? String(Math.round(v)) : '—');
+// 规则（用户口径）：
+//   ① mtc 一律四舍五入显示成整数（内部计算不变）；
+//   ② 任何地方都不出现 "ae-n"（负指数）—— 小于 1 的数一律两位小数；
+//   ③ 其余走 src/num.js 的 formatScientific（≥1 时是整数或科学计数法）。
+const fmtSmall2 = (v) => {
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a < 1) return v.toFixed(2);
+  return formatScientific(v);
+};
+const fmt = (v) => (typeof v === 'number' ? fmtSmall2(v) : formatScientific(v));
+const fmtRatio = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
+const money = (v) => {
+  if (!Number.isFinite(v)) return '—';
+  if (Math.abs(v) < 1e6) return String(Math.round(v));
+  return formatScientific(v);
+};
+// mtc：四舍五入到整数（小数值不足 1 时按两位小数给，避免全变 0）
+const mtcText = (v) => {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a < 1) return v.toFixed(2);
+  if (a < 1e21) return String(Math.round(v));   // mtc 一律显示整数
+  return formatScientific(v);
+};
 
 // ───────────────────────────── 服务器身份与存档 ─────────────────────────────
 const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };
@@ -237,14 +256,20 @@ const altDecimal = (x) => (Number.isFinite(x) && x >= 1e-3 && x < 1 ? x.toFixed(
 function hudVM() {
   const v = engine.view();
   const ratio = Number.isFinite(v.pressureRatio) ? v.pressureRatio : 0;
+  // 一根条两段：绿色 = 净化力、红色 = 深渊，都以左端为起点，红色覆盖在绿色之上。
+  // 百分比用对数口径：log10(值) / log10(本档目标)。
+  const logTarget = Math.log10(Math.max(v.targetInternal, 1.0000001));
+  const pctOfTarget = (x) => {
+    if (!(logTarget > 0)) return 0;
+    const lg = Math.log10(Math.max(x, 1));
+    return Math.max(0, Math.min(1, lg / logTarget));
+  };
+  const pPower = pctOfTarget(v.power);
+  const pPressure = pctOfTarget(v.pressure);
   return {
-    power: fmt(v.powerDisplay),
+    power: fmt(v.powerDisplay),        // 净化力 / 深渊保留两位小数（≥1 时按整数/科学计数法）
     pressure: fmt(v.pressureDisplay),
-    mtc: fmt(v.currencyDisplay),
-    powerAlt: altDecimal(v.powerDisplay),
-    pressureAlt: altDecimal(v.pressureDisplay),
-    mtcAlt: altDecimal(v.currencyDisplay),
-    target: fmt(v.target),
+    mtc: mtcText(v.currencyDisplay),   // mtc 一律整数
     layer: v.layer,
     layerName: v.layerName,
     charId: v.charId,
@@ -255,9 +280,11 @@ function hudVM() {
     guards: v.stats.guards,
     hits: v.hits,
     burstHits: v.burstHits,
-    progressPct: (Math.max(0, Math.min(1, v.progress)) * 100).toFixed(2),
-    progressText: `${(Math.max(0, Math.min(1, v.progress)) * 100).toFixed(1)}%`,
-    pressurePct: (Math.max(0, Math.min(1, ratio)) * 100).toFixed(2),
+    target: fmt(v.target),
+    powerPct: (pPower * 100).toFixed(2),
+    pressurePct: (pPressure * 100).toFixed(2),
+    powerPctText: `${(pPower * 100).toFixed(2)}%`,
+    pressurePctText: `${(pPressure * 100).toFixed(2)}%`,
     pressureRatioText: fmtRatio(ratio),
     danger: ratio >= 0.8,
     paused: !!v.paused,
@@ -315,7 +342,7 @@ function itemsVM(charId) {
     level: money(it.level),
     unlocked: !!it.unlocked,
     old: it.owner < curLayer,
-    price: fmt(it.price),
+    price: mtcText(it.price),
     affordable: !!it.affordable,
     effect: it.level > 0 ? engine.itemEffect(it) : engine.itemMechanism(it),
     mechanism: engine.itemMechanism(it),
@@ -475,8 +502,8 @@ function buildVM() {
       title: CHARACTERS[tab].title,
       blurb: CHARACTERS[tab].blurb,
       production: fmt(b.production),
-      first: fmtRatio(b.first),
-      second: fmtRatio(b.second),
+      first: fmt(b.first),
+      second: fmt(b.second),
       share: fmtRatio(b.share),
       isCurrent: charLayer(tab) === layer,
       layer: charLayer(tab),
@@ -699,17 +726,14 @@ const app = new Vue({
         <div class="c-header-res">
           <span class="c-header-res__label">净化力</span>
           <span class="c-header-res__value">{{ vm.hud.power }}</span>
-          <span v-if="vm.hud.powerAlt" class="c-header-res__alt">≈{{ vm.hud.powerAlt }}</span>
         </div>
         <div class="c-header-res c-header-res--mp">
           <span class="c-header-res__label">深渊</span>
           <span class="c-header-res__value">{{ vm.hud.pressure }}</span>
-          <span v-if="vm.hud.pressureAlt" class="c-header-res__alt">≈{{ vm.hud.pressureAlt }}</span>
         </div>
         <div class="c-header-res c-header-res--pp">
           <span class="c-header-res__label">mtc</span>
           <span class="c-header-res__value">{{ vm.hud.mtc }}</span>
-          <span v-if="vm.hud.mtcAlt" class="c-header-res__alt">≈{{ vm.hud.mtcAlt }}</span>
         </div>
         <div class="c-header-tier">你现在在 {{ vm.hud.layerName }} · 第 {{ vm.hud.layer }} 档 / 共 4 档</div>
         <button class="o-primary-btn c-pause-btn" :class="{ 'c-pause-btn--on': vm.hud.paused }"
@@ -718,20 +742,17 @@ const app = new Vue({
         </button>
       </div>
 
-      <!-- ── 两根条：净化进度 + 深渊压迫 ── -->
+      <!-- ── 一根条：绿=净化力、红=深渊（都以左端为起点，红在上层）── -->
       <div class="l-abyss-bar">
-        <div class="c-bar-row">
-          <span class="c-bar-row__label">净化进度</span>
-          <div class="c-abyss-bar c-progress-bar">
-            <div class="c-abyss-bar__fill c-progress-bar__fill" :style="{ width: vm.hud.progressPct + '%' }"></div>
-            <div class="c-abyss-bar__text">{{ vm.hud.progressText }} · 突破目标 {{ vm.hud.target }}</div>
-          </div>
-        </div>
         <div class="c-bar-row" :class="{ 'is-doomed': vm.hud.danger }">
-          <span class="c-bar-row__label">深渊压迫</span>
-          <div class="c-abyss-bar c-pressure-bar">
-            <div class="c-abyss-bar__fill c-pressure-bar__fill" :style="{ width: vm.hud.pressurePct + '%' }"></div>
-            <div class="c-abyss-bar__text">深渊 ÷ 净化力 = {{ vm.hud.pressureRatioText }}（到 1 即覆灭）</div>
+          <span class="c-bar-row__label">进度</span>
+          <div class="c-abyss-bar c-dual-bar">
+            <div class="c-dual-bar__power" :style="{ width: vm.hud.powerPct + '%' }"></div>
+            <div class="c-dual-bar__pressure" :style="{ width: vm.hud.pressurePct + '%' }"></div>
+            <div class="c-dual-bar__text">
+              <span class="c-dual-bar__t-power">净化力 {{ vm.hud.powerPctText }}</span>
+              <span class="c-dual-bar__t-pressure">深渊 {{ vm.hud.pressurePctText }}</span>
+            </div>
           </div>
         </div>
         <div class="c-abyss-info">
@@ -741,6 +762,7 @@ const app = new Vue({
           <span>覆灭 {{ vm.hud.collapses }}</span>
           <span>守护 {{ vm.hud.guards }}</span>
           <span v-if="vm.hud.hits">削减 {{ vm.hud.hits }} 次 · 强化 {{ vm.hud.burstHits }}</span>
+          <span>深渊÷净化力 {{ vm.hud.pressureRatioText }}</span>
           <span>MP {{ vm.hud.wallets.mp }} · PP {{ vm.hud.wallets.pp }}</span>
           <span v-if="vm.hud.paused" class="c-paused-tag">已暂停</span>
         </div>

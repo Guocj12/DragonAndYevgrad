@@ -24,7 +24,7 @@ export const ENGINE_VERSION = 6;
 // ─────────────────────────────────────────────────────────────
 // 自动购买科技（每角色一条，0..22 级）
 //   1–8 级：每 1 秒自动购买一次「第 L 个」升级（若已解锁且钱够）
-//   9–21 级：触发间隔 ×0.8/级（L21 ≈ 0.055s ≈ 18.2 次/秒的单次购买）
+//   9–21 级：触发间隔逐级压缩（每级 ×0.05^(1/13) ≈ ×0.794），到 21 级正好 0.05s = 每秒 20 次单次购买
 //   22 级（满级）：每 tick（0.05s）执行一次「购买最大数量」= 20Hz 全自动
 // 价格：249 前 8 级各 2，之后每级 ×2；其余角色前 8 级各 4 / 8 / 16，之后每级 ×2。
 // 货币：记忆点数（MP）。
@@ -32,7 +32,9 @@ export const ENGINE_VERSION = 6;
 export const AUTO_MAX_LEVEL = 22;
 export const AUTO_BASE_COST = [2, 4, 8, 16];   // 层 1..4 的前 8 级单价
 export const AUTO_INTERVAL_BASE = 1;           // 1–8 级的触发间隔（秒）
-export const AUTO_INTERVAL_STEP = 0.8;         // 9–21 级每级压缩倍率
+// 9–21 级（13 级）把间隔从 1s 压到正好 0.05s（= 每秒 20 次单次购买）。
+// 所以每级倍率不是整数 0.8，而是 0.05^(1/13) ≈ 0.794328（0.8^13 会停在 0.055，只有 18.2 次/秒）。
+export const AUTO_INTERVAL_STEP = 0.05 ** (1 / (AUTO_MAX_LEVEL - 9));   // 13 级压缩
 
 export function autoTechCost(layer, level) {
   const base = AUTO_BASE_COST[layer - 1];
@@ -200,7 +202,8 @@ export class Engine {
     else if (level <= 8) effect = `每 1 秒自动购买一次第 ${level} 个升级`;
     else if (level < AUTO_MAX_LEVEL) {
       const iv = autoTechInterval(level);
-      effect = `每 ${iv.toFixed(4)} 秒自动购买一次「该角色最便宜的升级」≈ ${(1 / iv).toFixed(1)} 次/秒`;
+      const ivText = iv >= 0.1 ? Number(iv.toFixed(2)) : Number(iv.toFixed(3));
+      effect = `每 ${ivText} 秒自动购买一次「该角色最便宜的升级」（≈ ${(1 / iv).toFixed(2)} 次/秒）`;
     } else effect = '每 0.05 秒（20Hz）执行一次「购买最大数量」';
     return {
       charId, layer, level, maxLevel: AUTO_MAX_LEVEL,
@@ -389,10 +392,13 @@ export class Engine {
   itemEffect(item) {
     const eff = item.effective;
     const L = this.s.layer;
+    // 显示口径：小于 1 一律两位小数（不出现 ae-n），其余照常
     const num = (x) => {
       if (!Number.isFinite(x)) return '—';
       const a = Math.abs(x);
-      if (a >= 1e5 || (a > 0 && a < 1e-3)) return x.toExponential(2);
+      if (a === 0) return '0';
+      if (a < 1) return x.toFixed(2);
+      if (a >= 1e6) return x.toExponential(2);
       return String(Number(x.toFixed(3)));
     };
     const owner = item.owner, kind = item.kind;
