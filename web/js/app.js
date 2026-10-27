@@ -267,20 +267,17 @@ function hudVM() {
 }
 
 // 角色页「升级」：左右两栏（kind 0 = 主机制 / kind 1 = 第二机制）
-// 每栏只显示【已解锁】的项 + 全表里【下一个即将解锁】的那一项，其余未解锁一律隐藏。
+// **只显示这个角色自己的 8 项**（owner = charLayer(charId)），不混别的角色；
+// 每栏只显示【已解锁】的项 + 【下一个即将解锁】的那一项，其余未解锁一律隐藏。
 function itemsVM(charId) {
   const curLayer = engine.s.layer;
-  if (charLayer(charId) !== curLayer) {
-    return {
-      live: false,
-      cols: [],
-      note: `引擎当前在「${TIER_NAMES[curLayer - 1]}」（第 ${curLayer} 层 · ${CHARACTERS[LAYER_TO_CHAR[curLayer]].name}），`
-        + '升级表只在该层生效。切到当前层的角色页看实时 8 项。',
-    };
+  const owner = charLayer(charId);
+  if (owner > curLayer) {
+    return { live: false, cols: [], note: '这个角色还没遇到。' };
   }
-  const list = engine.items();
-  const nextIdx = engine.nextUnlockIndex();
-  const groups = ITEM_GROUPS[curLayer];
+  const list = engine.items().filter((it) => it.owner === owner);
+  const nextIdx = list.findIndex((it) => !it.unlocked);
+  const groups = ITEM_GROUPS[owner];
   const cards = list.map((it) => ({
     index: it.index,
     id: it.id,
@@ -306,7 +303,15 @@ function itemsVM(charId) {
     cards: unlocked.filter((c) => c.kind === kind),
     next: nextCard && nextCard.kind === kind ? nextCard : null,
   }));
-  return { live: true, cols, note: '', canBuyAny: unlocked.some((c) => c.affordable) };
+  return {
+    live: true,
+    owner,
+    cols,
+    note: '',
+    unlockedCount: unlocked.length,
+    total: cards.length,
+    canBuyAny: unlocked.some((c) => c.affordable),
+  };
 }
 
 // 角色页「科技」：自动购买（恒开）+ 失败永久 F_s（MP 购买，覆灭结算自动买）
