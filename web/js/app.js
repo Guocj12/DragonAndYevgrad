@@ -12,7 +12,7 @@
 // 旧引擎（v1）的 shop / battle / 批量购买 / 待结算按钮 / 科技树画布全部移除；
 // 科技树本轮「保留但不解锁」（TREE_ENABLED === false），不加载 web/js/tree.js。
 
-import { formatScientific, formatTime, formatDisplay, formatInteger, formatPrice } from '../../src/num.js';
+import { formatScientific, formatTime, formatDisplay, formatInteger } from '../../src/num.js';
 import { Engine, createInitialState, STATE_VERSION } from '../../src/engine.js';
 import {
   CHARACTERS, CHARACTER_ORDER, TIER_NAMES, FAILURE_NAMES, SUCCESS_NAMES, LAYER_TO_CHAR, TREE_ENABLED,
@@ -26,13 +26,16 @@ const OFFLINE_CAP = 8 * 3600; // 离线最多补算 8 小时（§9.2：补算必
 // ───────────────────────────── 数字显示 ─────────────────────────────
 // 规则（用户口径）：
 //   ① 全局不允许出现 "e-1" 这种负指数：小于 1 的值一律写成小数（0.05 这种）；
-//   ② mtc 四舍五入到整数；价格也显示整数，但正数至少显示 1；
+//   ② mtc（余额与价格）统一 ×1000 后显示整数；内部数值不变，只是显示单位变小 1000 倍；
 //   ③ 其余数字 ≥1 时正常用科学计数法。
 const fmt = (v) => formatDisplay(v);
 const fmtRatio = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
 const money = (v) => formatInteger(v);
-const mtcText = (v) => formatInteger(v);
-const mtcCost = (v) => formatPrice(v);
+// mtc 统一放大 1000 倍显示（内部数值与流程完全不变，只是 mtc 的最小单位变成 1/1000，
+// 于是 0.024 这种价格直接变成 24，不再有四舍五入问题）。
+const MTC_SCALE = 1000;
+const mtcText = (v) => formatInteger(v * MTC_SCALE);
+const mtcCost = (v) => formatInteger(v * MTC_SCALE);
 
 // ───────────────────────────── 服务器身份与存档 ─────────────────────────────
 const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };

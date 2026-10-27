@@ -55,7 +55,7 @@ const chips = await page.evaluate(() => [...document.querySelectorAll('.c-header
   .map((e) => e.textContent.trim()));
 ok(chips.length === 3, `三个 HUD 数字：${chips.join(' / ')}`);
 const mtcChip = chips[2] || '';
-const mtcVal = v.currencyDisplay;
+const mtcVal = v.currencyDisplay * 1000;      // mtc 显示统一 ×1000（最小单位 1/1000）
 const wantMtc = Math.abs(mtcVal) < 1e6 ? String(Math.round(mtcVal)) : null;
 ok(wantMtc === null ? /e/.test(mtcChip) : mtcChip === wantMtc,
   `mtc 显示整数（期望 ${wantMtc === null ? '科学计数法' : wantMtc}，实际 ${mtcChip}）`);
