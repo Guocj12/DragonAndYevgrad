@@ -65,6 +65,7 @@ ok(Number.parseFloat(chips[0]) > 0 && chips[1] !== '', `净化力 ${chips[0]} / 
 ok(await page.locator('.c-dual-bar').count() === 1, '只有一根进度条');
 ok(await page.locator('.c-dual-bar__power').count() === 1, '净化力色块存在');
 ok(await page.locator('.c-dual-bar__pressure').count() === 1, '深渊色块存在');
+ok(!/e-\d/.test(text), '页面不出现负指数（e-1 这种）');
 ok(text.includes('奶茶店'), '档名可见');
 ok(/档\s*1|第\s*1\s*档|1\s*\/\s*4/.test(text), '档号可见');
 

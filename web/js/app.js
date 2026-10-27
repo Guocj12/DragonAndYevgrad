@@ -12,7 +12,7 @@
 // 旧引擎（v1）的 shop / battle / 批量购买 / 待结算按钮 / 科技树画布全部移除；
 // 科技树本轮「保留但不解锁」（TREE_ENABLED === false），不加载 web/js/tree.js。
 
-import { formatScientific, formatTime } from '../../src/num.js';
+import { formatScientific, formatTime, formatDisplay, formatInteger, formatPrice } from '../../src/num.js';
 import { Engine, createInitialState, STATE_VERSION } from '../../src/engine.js';
 import {
   CHARACTERS, CHARACTER_ORDER, TIER_NAMES, FAILURE_NAMES, SUCCESS_NAMES, LAYER_TO_CHAR, TREE_ENABLED,
@@ -25,34 +25,14 @@ const OFFLINE_CAP = 8 * 3600; // 离线最多补算 8 小时（§9.2：补算必
 
 // ───────────────────────────── 数字显示 ─────────────────────────────
 // 规则（用户口径）：
-//   ① mtc 余额只显示整数（四舍五入，内部计算不变）—— 不出现「.几」；
-//   ② 其余数字正常用科学计数法（formatScientific），不强行改成两位小数；
-//   ③ 价格本身也是 mtc：≥1 显示整数，<1 交给科学计数法（如 2.4e-1），不显示 0。
-const fmt = (v) => formatScientific(v);
+//   ① 全局不允许出现 "e-1" 这种负指数：小于 1 的值一律写成小数（0.05 这种）；
+//   ② mtc 四舍五入到整数；价格也显示整数，但正数至少显示 1；
+//   ③ 其余数字 ≥1 时正常用科学计数法。
+const fmt = (v) => formatDisplay(v);
 const fmtRatio = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
-// 通用整数（mp / pp / 计数）：大数交回科学计数法
-const money = (v) => {
-  if (!Number.isFinite(v)) return '—';
-  if (Math.abs(v) < 1e6) return String(Math.round(v));
-  return formatScientific(v);
-};
-// mtc 余额：整数，绝不带小数；大到一定程度就正常用科学计数法
-const mtcText = (v) => {
-  if (!Number.isFinite(v)) return '—';
-  const a = Math.abs(v);
-  if (a === 0) return '0';
-  if (a < 1e6) return String(Math.round(v));
-  return formatScientific(v);
-};
-// mtc 价格：≥1 取整；不足 1 时用科学计数法（避免显示成 0）
-const mtcCost = (v) => {
-  if (!Number.isFinite(v)) return '—';
-  const a = Math.abs(v);
-  if (a === 0) return '0';
-  if (a < 1) return formatScientific(v);
-  if (a < 1e6) return String(Math.round(v));
-  return formatScientific(v);
-};
+const money = (v) => formatInteger(v);
+const mtcText = (v) => formatInteger(v);
+const mtcCost = (v) => formatPrice(v);
 
 // ───────────────────────────── 服务器身份与存档 ─────────────────────────────
 const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };

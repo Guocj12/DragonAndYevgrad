@@ -189,6 +189,37 @@ export function formatPercent(x, digits = 1) {
   return `${(x * 100).toFixed(digits)}%`;
 }
 
+// —— 界面显示口径（用户口径）——
+// 全局不允许出现 "e-1" 这种负指数：小于 1 的值一律写成小数（两位有效数字，
+// 极小的再退到定点小数），大于等于 1 的值照常走 formatScientific。
+export function formatDisplay(v, digits = 3) {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1) return formatScientific(v, digits);
+  // 小数：按量级选位数，去掉末尾多余的 0（0.05 而不是 0.050）
+  const places = Math.min(9, Math.max(2, 2 - Math.floor(Math.log10(a))));
+  const s = v.toFixed(places).replace(/0+$/, '').replace(/\.$/, '');
+  return s === '0' || s === '-0' ? v.toFixed(9).replace(/0+$/, '') : s;
+}
+
+// mtc 口径：四舍五入到整数；大到 1e6 以上才用科学计数法
+export function formatInteger(v, digits = 3) {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a < 1e6) return String(Math.round(v));
+  return formatScientific(v, digits);
+}
+
+// 价格口径：同样显示整数，但正数价格至少显示 1，避免出现「0 mtc」这种买得到却显示 0 的情况
+export function formatPrice(v, digits = 3) {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a < 1e6) return String(Math.max(1, Math.round(v)));
+  return formatScientific(v, digits);
+}
+
 export function formatTime(sec) {
   if (!isFinite(sec)) return '∞';
   if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)}s`;
