@@ -392,13 +392,12 @@ export class Engine {
   itemEffect(item) {
     const eff = item.effective;
     const L = this.s.layer;
-    // 显示口径：小于 1 一律两位小数（不出现 ae-n），其余照常
+    // 显示口径：正常科学计数法（不强行改两位小数）
     const num = (x) => {
       if (!Number.isFinite(x)) return '—';
       const a = Math.abs(x);
       if (a === 0) return '0';
-      if (a < 1) return x.toFixed(2);
-      if (a >= 1e6) return x.toExponential(2);
+      if (a >= 1e6 || a < 1e-2) return x.toExponential(2);
       return String(Number(x.toFixed(3)));
     };
     const owner = item.owner, kind = item.kind;

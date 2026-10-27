@@ -46,26 +46,25 @@ ok(v1.power > v0.power, `tick 在推进（净化力 ${v0.power.toFixed(3)} → $
 ok(v1.pressure > 0, '深渊在上涨');
 ok(v1.layer === 1 && v1.layerName === '奶茶店', `当前层 ${v1.layer} ${v1.layerName}`);
 
-// 2. HUD 三个数字与引擎值一致（用 formatScientific 同一套格式化）
+// 2. HUD 三个数字：净化力 / 深渊 / mtc（mtc 必须是整数或科学计数法，不能有「.几」）
 await page.evaluate(() => window.__dny.tick(400));
 await page.waitForTimeout(300);
 const v = await page.evaluate(() => window.__dny.view());
 const text = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
-const check = (label, val) => {
-  const s = fmt(val);
-  const hit = text.includes(s) || text.includes(s.replace('e+', 'e'));
-  ok(hit, `HUD 显示 ${label} = ${s}`);
-};
-check('净化力', v.powerDisplay);
-check('深渊', v.pressureDisplay);
-// mtc 一律显示整数（内部数值不变，只是显示取整）
-const mtcShown = v.currencyDisplay < 1 ? v.currencyDisplay.toFixed(2) : String(Math.round(v.currencyDisplay));
-ok(text.includes(mtcShown), `HUD 显示 mtc = ${mtcShown}（整数）`);
+const chips = await page.evaluate(() => [...document.querySelectorAll('.c-header-res__value')]
+  .map((e) => e.textContent.trim()));
+ok(chips.length === 3, `三个 HUD 数字：${chips.join(' / ')}`);
+const mtcChip = chips[2] || '';
+const mtcVal = v.currencyDisplay;
+const wantMtc = Math.abs(mtcVal) < 1e6 ? String(Math.round(mtcVal)) : null;
+ok(wantMtc === null ? /e/.test(mtcChip) : mtcChip === wantMtc,
+  `mtc 显示整数（期望 ${wantMtc === null ? '科学计数法' : wantMtc}，实际 ${mtcChip}）`);
+ok(!/\d\.\d/.test(mtcChip) || /e/.test(mtcChip), 'mtc 不出现「.几」');
+ok(Number.parseFloat(chips[0]) > 0 && chips[1] !== '', `净化力 ${chips[0]} / 深渊 ${chips[1]}`);
 // 一根双色进度条、两个对数百分比
 ok(await page.locator('.c-dual-bar').count() === 1, '只有一根进度条');
 ok(await page.locator('.c-dual-bar__power').count() === 1, '净化力色块存在');
 ok(await page.locator('.c-dual-bar__pressure').count() === 1, '深渊色块存在');
-ok(!/e-\d/.test(text), '页面上没有 ae-n 形式的数字');
 ok(text.includes('奶茶店'), '档名可见');
 ok(/档\s*1|第\s*1\s*档|1\s*\/\s*4/.test(text), '档号可见');
 

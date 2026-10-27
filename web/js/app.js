@@ -25,29 +25,32 @@ const OFFLINE_CAP = 8 * 3600; // 离线最多补算 8 小时（§9.2：补算必
 
 // ───────────────────────────── 数字显示 ─────────────────────────────
 // 规则（用户口径）：
-//   ① mtc 一律四舍五入显示成整数（内部计算不变）；
-//   ② 任何地方都不出现 "ae-n"（负指数）—— 小于 1 的数一律两位小数；
-//   ③ 其余走 src/num.js 的 formatScientific（≥1 时是整数或科学计数法）。
-const fmtSmall2 = (v) => {
-  const a = Math.abs(v);
-  if (a === 0) return '0';
-  if (a < 1) return v.toFixed(2);
-  return formatScientific(v);
-};
-const fmt = (v) => (typeof v === 'number' ? fmtSmall2(v) : formatScientific(v));
+//   ① mtc 余额只显示整数（四舍五入，内部计算不变）—— 不出现「.几」；
+//   ② 其余数字正常用科学计数法（formatScientific），不强行改成两位小数；
+//   ③ 价格本身也是 mtc：≥1 显示整数，<1 交给科学计数法（如 2.4e-1），不显示 0。
+const fmt = (v) => formatScientific(v);
 const fmtRatio = (v) => (Number.isFinite(v) ? v.toFixed(2) : '—');
+// 通用整数（mp / pp / 计数）：大数交回科学计数法
 const money = (v) => {
   if (!Number.isFinite(v)) return '—';
   if (Math.abs(v) < 1e6) return String(Math.round(v));
   return formatScientific(v);
 };
-// mtc：四舍五入到整数（小数值不足 1 时按两位小数给，避免全变 0）
+// mtc 余额：整数，绝不带小数；大到一定程度就正常用科学计数法
 const mtcText = (v) => {
   if (!Number.isFinite(v)) return '—';
   const a = Math.abs(v);
   if (a === 0) return '0';
-  if (a < 1) return v.toFixed(2);
-  if (a < 1e21) return String(Math.round(v));   // mtc 一律显示整数
+  if (a < 1e6) return String(Math.round(v));
+  return formatScientific(v);
+};
+// mtc 价格：≥1 取整；不足 1 时用科学计数法（避免显示成 0）
+const mtcCost = (v) => {
+  if (!Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a < 1) return formatScientific(v);
+  if (a < 1e6) return String(Math.round(v));
   return formatScientific(v);
 };
 
@@ -342,7 +345,7 @@ function itemsVM(charId) {
     level: money(it.level),
     unlocked: !!it.unlocked,
     old: it.owner < curLayer,
-    price: mtcText(it.price),
+    price: mtcCost(it.price),
     affordable: !!it.affordable,
     effect: it.level > 0 ? engine.itemEffect(it) : engine.itemMechanism(it),
     mechanism: engine.itemMechanism(it),
