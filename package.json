@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "龙与耶维城 — 多层重置增量放置游戏（档 0–3 可玩版）",
+  "description": "龙与耶维城 — 多层重置增量放置游戏（档 0–3 可玩版；数值 = docs/数值设计.md V5）",
   "scripts": {
     "start": "node server.mjs 8080",
+    "verify": "node tools/v5-verify.mjs && node tools/v5-engine-verify.mjs && node tools/v5-audit.mjs && node tools/v5-save-verify.mjs",
     "sim": "node sim/run.mjs",
-    "sim:value": "node sim/simulate.mjs value 40 0.5",
-    "probe": "node sim/probe.mjs value 300",
+    "sim:full": "node sim/simulate.mjs",
+    "probe": "node sim/probe.mjs 300",
+    "doc:balance": "node tools/gen-balance-doc.mjs",
     "test:ui": "node test/ui.e2e.mjs",
+    "test:story": "node test/story.e2e.mjs",
     "test:play": "node test/play.e2e.mjs"
   },
   "dependencies": {

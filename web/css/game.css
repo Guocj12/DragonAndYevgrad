@@ -58,6 +58,12 @@ body {
   font-weight: bold;
 }
 
+/* 0<x<1 的小数：科学计数法旁边给一个十进制约数（纯显示提示） */
+.c-header-res__alt {
+  font-size: 1.15rem;
+  opacity: 0.55;
+}
+
 .c-header-tier {
   font-size: 1.6rem;
   padding: 0.3rem 1rem;
@@ -683,3 +689,274 @@ body {
 .c-ach--got { border-color: var(--color-good); opacity: 1; }
 .c-ach__name { font-size: 1.4rem; font-weight: bold; }
 .c-ach__desc { font-size: 1.2rem; opacity: 0.8; margin-top: 0.2rem; }
+
+/* ══════════════════════════════════════════════════════════════
+   V5 外壳（数值设计 §9.2 接入）
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 两根条：净化进度（绿）与 深渊压迫（红，唯一紧张来源）── */
+.c-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  margin: 0.45rem 0;
+}
+
+.c-bar-row__label {
+  flex: 0 0 8rem;
+  font-size: 1.2rem;
+  text-align: right;
+  opacity: 0.72;
+  white-space: nowrap;
+}
+
+.c-bar-row .c-abyss-bar { flex: 1 1 auto; width: auto; }
+
+.c-progress-bar {
+  border-color: var(--color-good-dark, #156a2d);
+}
+
+.c-progress-bar__fill {
+  background: linear-gradient(90deg, #22aa48, #4ecdc4);
+}
+
+.c-progress-bar,
+.c-pressure-bar {
+  /* 空条也要看得出是「轨道」，别像坏掉的组件 */
+  background: repeating-linear-gradient(90deg, #0a0d13 0 2.4rem, #10151d 2.4rem 4.8rem);
+}
+
+.c-pressure-bar {
+  height: 3rem;
+  border-color: var(--color-bad, #e84e4e);
+}
+
+.c-pressure-bar__fill {
+  background: linear-gradient(90deg, #ffb347, #ff5f6d 65%, #ff2d2d);
+}
+
+.c-bar-row.is-doomed .c-pressure-bar {
+  border-color: #ff2d2d;
+  box-shadow: 0 0 1.6rem rgba(255, 45, 45, 70%);
+  animation: c-doom-pulse 0.9s ease-in-out infinite alternate;
+}
+
+.c-bar-row.is-doomed .c-pressure-bar__text {
+  color: #ffe0e0;
+  font-weight: bold;
+}
+
+@keyframes c-doom-pulse {
+  from { box-shadow: 0 0 0.8rem rgba(255, 45, 45, 45%); }
+  to { box-shadow: 0 0 2rem rgba(255, 45, 45, 95%); }
+}
+
+/* ── 只读升级表（按 group 折叠）── */
+.l-item-group {
+  width: 100%;
+  max-width: 110rem;
+  margin-bottom: 0.8rem;
+  padding: 0.5rem 0.9rem 0.7rem;
+  background: rgba(0, 0, 0, 28%);
+  border: var(--var-border-width, 0.2rem) solid var(--color-good-dark, #2f4a3a);
+  border-radius: var(--var-border-radius, 0.5rem);
+}
+
+.c-item-group__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 1.45rem;
+  font-weight: bold;
+  color: var(--color-accent);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0.2rem 0;
+}
+
+.c-item-group__caret { width: 1.4rem; opacity: 0.8; }
+
+.c-item-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1.25rem;
+  margin-top: 0.3rem;
+}
+
+.c-item-table th,
+.c-item-table td {
+  border-bottom: 0.1rem solid rgba(255, 255, 255, 10%);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+.c-item-table th { font-weight: normal; opacity: 0.6; }
+.c-item-table__name { font-weight: bold; }
+.c-item-table__price { color: var(--color-good); }
+
+.c-item-table tr.is-locked { opacity: 0.6; }
+.c-item-table__lock { color: #ff9a9a; font-weight: bold; }
+
+.c-tag {
+  display: inline-block;
+  margin-left: 0.6rem;
+  padding: 0 0.45rem;
+  font-size: 1.05rem;
+  font-weight: normal;
+  line-height: 1.6rem;
+  border-radius: 0.3rem;
+  border: 0.1rem solid rgba(255, 255, 255, 25%);
+  color: rgba(255, 255, 255, 70%);
+}
+
+.c-tag--ok { border-color: var(--color-good); color: var(--color-good); }
+.c-tag--old { border-color: #ffcf6b; color: #ffcf6b; }
+
+.c-page-note {
+  width: 100%;
+  max-width: 110rem;
+  margin: 0.4rem 0 0.8rem;
+  font-size: 1.25rem;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.c-tree-placeholder {
+  padding: 0.6rem 0.8rem;
+  border: 0.1rem dashed rgba(255, 255, 255, 25%);
+  border-radius: var(--var-border-radius, 0.5rem);
+  opacity: 0.75;
+}
+
+/* ── 守护页 ── */
+.c-wallet-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  width: 100%;
+  max-width: 110rem;
+  margin: 0.2rem 0 0.8rem;
+  font-size: 1.35rem;
+}
+
+.c-wallet {
+  padding: 0.3rem 1rem;
+  border: var(--var-border-width, 0.2rem) solid var(--color-infinity, #b67f33);
+  border-radius: var(--var-border-radius, 0.5rem);
+}
+
+.c-wallet b { margin-left: 0.6rem; font-size: 1.6rem; }
+.c-wallet--pp { border-color: var(--color-eternity, #b241e3); }
+
+.c-guard-table { max-width: 110rem; }
+.c-effect-table, .c-ledger-table { max-width: 110rem; }
+.c-ledger--success td { color: #9ff0c0; }
+.c-ledger--failure td { color: #ffb3b3; }
+
+/* ── 通关面板 ── */
+.l-finish {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 72%);
+}
+
+.c-finish-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  width: min(56rem, 92vw);
+  text-align: center;
+  background: var(--color-base);
+  border: var(--var-border-width, 0.2rem) solid var(--color-good);
+  border-radius: var(--var-border-radius, 0.8rem);
+  padding: 2rem;
+}
+
+.c-finish-title { font-size: 2.6rem; font-weight: bold; color: var(--color-good); }
+.c-finish-line { font-size: 1.4rem; }
+.c-finish-actions { justify-content: center; }
+
+/* 旧档被跳过等存档提示：一行灰字 */
+.c-save-issue {
+  margin-top: 0.3rem;
+  font-size: 1.15rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 55%);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   升级页：左右两栏（主机制 / 第二机制）+ 每项信息卡 + 购买按钮
+   边框语义：绿 = 现在买得起；红 = 钱不够；虚线 = 即将解锁（显示条件）
+   ═══════════════════════════════════════════════════════════════ */
+.l-section-title--buy { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.l-section-title--buy .c-buy-max { margin-left: auto; }
+
+.l-upgrade-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6rem;
+  align-items: start;
+  margin-top: 1.2rem;
+}
+@media (max-width: 900px) {
+  .l-upgrade-cols { grid-template-columns: 1fr; }
+}
+.l-upgrade-col { display: flex; flex-direction: column; gap: 0.9rem; }
+.c-upgrade-col__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+.c-upgrade-col__title { font-size: 1.55rem; letter-spacing: 0.04em; }
+.c-upgrade-col__empty { padding: 0.8rem 0.6rem; }
+
+.c-upgrade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.6rem;
+  background: rgba(0, 0, 0, 0.3);
+}
+.c-upgrade-card--locked { border-style: dashed; opacity: 0.72; }
+.c-upgrade-card__head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.8rem; }
+.c-upgrade-card__name { font-size: 1.5rem; }
+.c-upgrade-card__level { font-size: 1.3rem; color: #cfe6ff; white-space: nowrap; }
+.c-upgrade-card__tags { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.c-upgrade-card__effect { font-size: 1.25rem; color: #b9d6ff; }
+.c-upgrade-card__lock { font-size: 1.25rem; color: #f0b33c; }
+
+.c-buy-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  margin-top: 0.2rem;
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+  font-size: 1.3rem;
+  border-radius: 0.45rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #666;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.c-buy-btn.is-affordable { border-color: #46d97a; color: #d4ffe2; }
+.c-buy-btn.is-affordable:hover { background: rgba(70, 217, 122, 0.18); }
+.c-buy-btn.is-poor { border-color: #e05252; color: #ffd0d0; cursor: not-allowed; }
+.c-buy-btn.is-poor:hover { background: rgba(224, 82, 82, 0.1); }
+.c-buy-btn__price { font-size: 1.3rem; opacity: 0.92; }
+.c-tag--lock { border-color: #f0b33c; color: #f0b33c; }
+
+.c-tech-toggle { margin-top: 0.6rem; width: 100%; font-size: 1.25rem; }

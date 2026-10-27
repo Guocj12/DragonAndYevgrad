@@ -1,66 +1,72 @@
-// sim/simulate.mjs — 全流程模拟：跑一整条时间线，统计每档耗时/轮数
-// 用法：node sim/simulate.mjs [strategy] [maxHours] [seed]
-import { Engine, createInitialState } from '../src/engine.js';
-import { Dec } from '../src/num.js';
-import { CHARACTER_ORDER } from '../src/db.js';
-import { makeBot } from './bot.js';
+// sim/simulate.mjs — 全流程模拟：跑一整程（第一层 → 覆灭 / 第四层成功）
+//
+// V5 之后只有一种购买策略：**全局最便宜优先，每 tick 反复购买直到买不起**（数值设计 §1
+// 冻结版基准）。所以这里没有"机器人"可调，simulate 就是把 Engine 一路 tick 到底，
+// 再把每轮/每档的账目整理出来。结果必须与 docs/数值设计.md §10.2 的表一致。
+//
+// 用法：node sim/simulate.mjs [maxHours]
 
-export function simulate({ strategy = 'value', maxHours = 24, dt = 0.5, verbose = false, seed = 0 } = {}) {
-  const st = createInitialState();
-  const eng = new Engine(st);
-  const bot = makeBot(strategy);
-  const maxTicks = Math.floor((maxHours * 3600) / dt);
-  let tierStart = 0;
-  const tierTimes = new Array(8).fill(0);
-  const tierRuns = new Array(8).fill(0);
-  let lastTier = 0;
-  let tick = 0;
-  for (; tick < maxTicks; tick++) {
-    const before = eng.s.tier;
-    eng.tick(dt);
-    if (eng.s.storyQueue.length) { while (eng.s.storyQueue.length) eng.finishStory(); }
-    if (eng.s.pending) eng.resolvePending();
-    bot(eng, dt);
-    if (eng.s.won) { tierTimes[lastTier] += eng.s.stats.playTime - tierStart; tierRuns[lastTier] += 1; break; }   // 通关时补记最后一段
-    if (eng.s.tier !== before) {
-      const elapsed = eng.s.stats.playTime - tierStart;
-      tierTimes[before] += elapsed;       // 无论守护还是覆灭，时长都记在「离开的那一档」上
-      if (eng.s.tier > before) tierRuns[before]++;
-      tierStart = eng.s.stats.playTime;
-      lastTier = eng.s.tier;
-      if (verbose) console.log(`tier ${before}→${eng.s.tier} @ ${(eng.s.stats.playTime / 3600).toFixed(2)}h, cycles=${eng.s.stats.cycles}, y=${Dec.log10(eng.s.mtc).toFixed(1)}`);
+import { Engine, createInitialState } from '../src/engine.js';
+import { CONFIG, snapshot } from '../src/v5.js';
+
+const f = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '—');
+
+export function simulate({ maxHours = 12 } = {}) {
+  const engine = new Engine(createInitialState());
+  const limit = Math.floor((maxHours * 3600) / CONFIG.dt);
+  const runs = [];
+  const segments = [];
+  let ticks = 0, runSegs = [];
+  let guard = 0;
+  while (!engine.state.finished && guard++ < limit) {
+    const r = engine.tick();
+    if (!r) continue;
+    segments.push(r);
+    ticks += r.ticks;
+    runSegs.push(r);
+    if (!r.win || r.layer === 4) {
+      runs.push({
+        run: runs.length + 1,
+        time: ticks * CONFIG.dt,
+        failedLayer: r.win ? null : r.layer,
+        complete: r.win && r.layer === 4,
+        segments: runSegs,
+        after: snapshot(engine.state.permanent),
+        wallets: { mp: engine.state.permanent.failureWallet, pp: engine.state.permanent.successWallet },
+      });
+      ticks = 0;
+      runSegs = [];
     }
   }
-  const s = eng.s;
+  const s = engine.state;
   return {
-    strategy,
-    won: s.won,
-    playTime: s.stats.playTime,
-    cycles: s.stats.cycles,
-    guards: s.stats.guards,
-    tierTimes,
-    tierRuns,
-    tierCollapses: s.stats.tierCollapses.slice(),
-    tierGuards: s.stats.tierGuards.slice(),
-    ap: s.ap.toString(),
-    mp: Dec.log10(s.mp),
-    pp: Dec.log10(s.pp),
-    mtcLog: Dec.log10(s.mtc),
-    prodLog: Dec.log10(eng.bonuses().prodTotal),
-    unlocked: s.unlocked.slice(),
-    runLog: s.stats.runLog.slice(-40),
+    finished: s.finished,
+    seconds: runs.reduce((a, r) => a + r.time, 0),
+    runs,
+    failures: s.stats.failures.slice(),
+    permanent: snapshot(s.permanent),
+    stats: s.stats,
   };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('simulate.mjs')) {
-  const strategy = process.argv[2] || 'value';
-  const maxHours = Number(process.argv[3] || 24);
-  const dt = Number(process.argv[4] || 0.5);
-  const r = simulate({ strategy, maxHours, dt, verbose: true });
-  const h = (x) => (x / 3600).toFixed(2) + 'h';
-  console.log(JSON.stringify({
-    strategy: r.strategy, won: r.won, total: h(r.playTime), cycles: r.cycles,
-    tierTimes: r.tierTimes.map((x) => h(x)), tierGuards: r.tierGuards, tierCollapses: r.tierCollapses,
-    ap: r.ap, mpLog: r.mp.toFixed(1), ppLog: r.pp.toFixed(1),
-  }, null, 1));
+  const maxHours = Number(process.argv[2] || 12);
+  const r = simulate({ maxHours });
+  console.log('轮 | 结局        | 整轮秒数 | 最后实际力量 | 结算后 F / U        | 失败余额 / 成功余额');
+  console.log('---|-------------|---------:|-------------:|---------------------|--------------------');
+  for (const run of r.runs) {
+    const last = run.segments.at(-1);
+    const p = run.after;
+    console.log(
+      `${String(run.run).padStart(2)} | ${String(run.complete ? '4层成功' : `${run.failedLayer}层失败`).padEnd(11)} `
+      + `| ${f(run.time).padStart(8)} | ${f(last.actualPeak, 6).padStart(12)} `
+      + `| F[${p.failure}] / U[${p.success}] | ${p.failureWallet} / ${p.successWallet}`,
+    );
+  }
+  console.log('');
+  console.log(`失败次数：${JSON.stringify(r.failures)}`);
+  console.log(`轮数：${r.runs.length}  累计：${f(r.seconds)}s（${f(r.seconds / 3600)} 小时）`);
+  console.log(`最终失败等级：F[${r.permanent.failure}]  最终成功等级：U[${r.permanent.success}]`);
+  console.log(`最终余额：失败 ${r.permanent.failureWallet} / 成功 ${r.permanent.successWallet}`);
+  console.log(`通关：${r.finished ? '是' : '否（超过 maxHours）'}`);
 }

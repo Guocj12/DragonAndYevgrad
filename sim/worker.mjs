@@ -1,21 +1,21 @@
-// sim/worker.mjs — 模拟器 worker：跑若干条时间线，回传统计
+// sim/worker.mjs — 保留为可选的工作线程入口（V5 是确定性的，run.mjs 已不再需要线程）
+//
+// workerData: { times }  → 跑 times 次，回调结果
+
 import { parentPort, workerData } from 'node:worker_threads';
 import { simulate } from './simulate.mjs';
 
-const { strategies, perWorker, maxHours, dt } = workerData;
+const times = Math.max(1, workerData?.times ?? 1);
 const out = [];
-for (const strategy of strategies) {
-  for (let i = 0; i < perWorker; i++) {
-    const r = simulate({ strategy, maxHours, dt });
-    out.push({
-      strategy,
-      won: r.won,
-      hours: r.playTime / 3600,
-      cycles: r.cycles,
-      tierTimes: r.tierTimes.map((x) => x / 3600),
-      tierGuards: r.tierGuards,
-      tierCollapses: r.tierCollapses,
-    });
-  }
+for (let i = 0; i < times; i++) {
+  const r = simulate({ maxHours: workerData?.maxHours ?? 12 });
+  out.push({
+    strategy: 'frozen-cheapest',
+    won: r.finished,
+    hours: r.seconds / 3600,
+    cycles: r.runs.length,
+    failures: r.failures,
+    permanent: r.permanent,
+  });
 }
 parentPort.postMessage(out);

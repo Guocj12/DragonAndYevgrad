@@ -1,5 +1,10 @@
-// test/play.e2e.mjs — 用 Playwright「真的玩一段」：
-// 剧情 → 点升级 → 暂停/继续 → 守护结算 → 覆灭结算 → 保存刷新续玩 → 窄屏
+// test/play.e2e.mjs — 用 Playwright「真的玩一段」（V5 外壳）
+//
+// 覆灭 → 守护 → 解锁耶维奇 → 存档刷新续玩 → 窄屏。数值全部由 20Hz 自动结算跑，
+// 这里只验证外壳在这条路径上不出错、计数与引擎一致。
+//
+// 用法：node server.mjs 8080  然后 node test/play.e2e.mjs [url]
+
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,144 +14,79 @@ const shotDir = path.join('test', 'screens');
 fs.mkdirSync(shotDir, { recursive: true });
 
 const problems = [];
+const consoleErrors = [];
 const ok = (c, m) => { console.log(`  ${c ? '✅' : '❌'} ${m}`); if (!c) problems.push(m); };
 
 const browser = await chromium.launch(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : { channel: 'chromium' });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') problems.push(`console.error: ${m.text()}`); });
+page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(`console.error: ${m.text()}`); });
 
-await page.goto(URL, { waitUntil: 'networkidle' });
-await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
-await page.reload({ waitUntil: 'networkidle' });
-await page.waitForSelector('.l-tab-bar');
-
-console.log('\n[1] 开场剧情 + 点 30 次升级');
-for (let i = 0; i < 24; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(150);
-}
-// 条件剧情会随时插入暂停；本脚本测的是操作流，先关掉（ui.e2e 的 [10] 单独测它）
-await page.evaluate(() => { window.__dny.engine().storyConditions = false; });
-const clicks = await page.evaluate(async () => {
-  let n = 0;
-  for (let i = 0; i < 30; i++) {
-    const btn = [...document.querySelectorAll('.l-upgrade-grid .c-upgrade-btn')].find((b) => !b.disabled);
-    if (btn) { btn.click(); n++; }
-    await new Promise((r) => setTimeout(r, 200));
+const tickUntil = async (predicateSrc, label, maxChunk = 4000, maxLoops = 400) => {
+  for (let i = 0; i < maxLoops; i++) {
+    const st = await page.evaluate(([src, n]) => {
+      window.__dny.tick(n);
+      const v = window.__dny.view();
+      // eslint-disable-next-line no-new-func
+      const pred = new Function('v', `return (${src});`);
+      return { done: pred(v), layer: v.layer, runs: v.stats.runs, guards: v.stats.guards, collapses: v.stats.collapses, ticks: v.stats.ticks };
+    }, [predicateSrc, maxChunk]);
+    if (st.done) { console.log(`  · ${label}：${st.ticks} ticks`); return st; }
   }
-  return n;
-});
-ok(clicks > 0, `点到 ${clicks} 次升级`);
-const s1 = await page.evaluate(() => {
-  const e = window.__dny.engine();
-  return { lv: e.s.chars['249'].upgrades[0], prod: e.bonuses().prodTotal.log10(), t: e.s.t };
-});
-ok(s1.lv > 0 && s1.prod > 0, `进度：Lv${s1.lv}，产量 log=${s1.prod.toFixed(1)}`);
-await page.screenshot({ path: path.join(shotDir, '40-play-early.png') });
+  throw new Error(`等不到条件：${label}`);
+};
 
-console.log('\n[2] 暂停 → 继续');
-await page.click('.c-pause-btn');
-await page.waitForTimeout(120);
-const p1 = await page.evaluate(() => window.__dny.engine().s.t);
-await page.waitForTimeout(500);
-const p2 = await page.evaluate(() => window.__dny.engine().s.t);
-ok(p1 === p2, '暂停时时间冻结');
-await page.click('.c-pause-btn');
-await page.waitForTimeout(300);
-const p3 = await page.evaluate(() => window.__dny.engine().s.t);
-ok(p3 > p2, '继续后时间恢复');
+await page.goto(URL, { waitUntil: 'load' });
+await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
+await page.reload({ waitUntil: 'load' });
+await page.waitForFunction(() => window.__dny && window.__dny.view, null, { timeout: 10000 });
+console.log('\n[1] 首轮覆灭');
+const c1 = await tickUntil('v.stats.collapses >= 1', '第一次覆灭');
+ok(c1.collapses === 1 && c1.layer === 1, '覆灭后回到第 1 层');
+const ledger0 = await page.evaluate(() => window.__dny.engine.state.ledger[0]);
+ok(Math.abs(ledger0.time - 722.85) < 1e-9, `首轮时长 ${ledger0.time}s（基准 722.85s）`);
+ok(ledger0.kind === 'failure' && ledger0.layer === 1, '首轮结算 = 第 1 层失败');
+const f1 = await page.evaluate(() => window.__dny.view().permanent.failure);
+ok(JSON.stringify(f1) === '[1,0,0,0]', `F = ${JSON.stringify(f1)}`);
+await page.screenshot({ path: path.join(shotDir, 'v5-after-collapse.png') });
 
-console.log('\n[3] 守护结算（点「净化」）');
-await page.evaluate(() => {
-  const e = window.__dny.engine();
-  e.s.S = e.s.S.constructor.from('0');
-  e.tick(0.5);
-  window.__dny.render();
-});
-await page.waitForTimeout(300);
-for (let i = 0; i < 10; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(150);
-}
-ok(await page.isVisible('.c-pending-box'), '出现净化结算框');
-await page.click('[data-action="resolve"]');
-await page.waitForTimeout(400);
-for (let i = 0; i < 30; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(120);
-}
-const g = await page.evaluate(() => {
-  const e = window.__dny.engine();
-  return { tier: e.s.tier, mp: e.s.mp.toNumber(), paused: e.s.paused, pending: e.s.pending };
-});
-ok(g.tier === 1, `进入档 ${g.tier}`);
-ok(g.mp > 0 && Number.isInteger(g.mp), `获得整数 MP（${g.mp}）`);
-ok(!g.paused && !g.pending, '结算后自动继续');
-await page.screenshot({ path: path.join(shotDir, '41-play-after-guard.png') });
+console.log('\n[2] 第一次守护（第 7 轮）');
+const g1 = await tickUntil('v.stats.guards >= 1', '第一次守护');
+ok(g1.layer === 2, `守护后进入第 2 层（实际 ${g1.layer}）`);
+const v2 = await page.evaluate(() => window.__dny.view());
+ok(v2.layerName === '耶维城', `档名 = ${v2.layerName}`);
+ok(JSON.stringify(v2.permanent.success) === '[1,0,0,0]', `U = ${JSON.stringify(v2.permanent.success)}`);
+const tabs = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
+ok(tabs.includes('耶维奇'), '耶维奇页签出现');
+ok(!tabs.includes('恒'), '第 2 层还没解锁恒');
+await page.screenshot({ path: path.join(shotDir, 'v5-after-guard.png') });
 
-console.log('\n[4] 覆灭结算（升级清空）');
-await page.evaluate(() => window.__dny.give({ mtc: '1e8' }));
-await page.evaluate(() => { window.__dny.engine().buyUpgrade('249', 0, 6); });
-await page.evaluate(() => {
-  const e = window.__dny.engine();
-  e.s.S = e.s.S.constructor.from('1e999999');
-  e.tick(0.5);
-  window.__dny.render();
-});
-await page.waitForTimeout(300);
-for (let i = 0; i < 10; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(140);
-}
-await page.click('[data-action="resolve"]');
-await page.waitForTimeout(400);
-for (let i = 0; i < 30; i++) {
-  if (!(await page.isVisible('.l-story').catch(() => false))) break;
-  await page.click('.l-story');
-  await page.waitForTimeout(120);
-}
-const c = await page.evaluate(() => {
-  const e = window.__dny.engine();
-  return { tier: e.s.tier, ups: e.s.chars['249'].upgrades.slice(), cycles: e.s.stats.cycles, paused: e.s.paused };
-});
-ok(c.tier === 0, '回到档 0');
-ok(c.ups.every((x) => x === 0), '升级全部清空');
-ok(!c.paused, '覆灭结算后自动继续');
-
-console.log('\n[5] 存档刷新续玩');
-await page.evaluate(() => window.__dny.act('save'));
+console.log('\n[3] 存档 → 刷新续玩');
 const before = await page.evaluate(() => {
-  const e = window.__dny.engine();
-  return { cycles: e.s.stats.cycles, tier: e.s.tier };
+  window.__dny.save();
+  return { ticks: window.__dny.view().stats.ticks, layer: window.__dny.view().layer, F: window.__dny.view().permanent.failure };
 });
-await page.reload({ waitUntil: 'networkidle' });
-await page.waitForSelector('.l-tab-bar');
-await page.waitForTimeout(600);
-const after = await page.evaluate(() => {
-  const e = window.__dny.engine();
-  return { cycles: e.s.stats.cycles, tier: e.s.tier };
-});
-ok(after.cycles === before.cycles, `刷新后覆灭数保持（${before.cycles} → ${after.cycles}）`);
-ok(after.tier === before.tier, `刷新后档位保持（${before.tier} → ${after.tier}）`);
+await page.reload({ waitUntil: 'load' });
+await page.waitForFunction(() => window.__dny && window.__dny.view, null, { timeout: 10000 });
+const after = await page.evaluate(() => ({ ticks: window.__dny.view().stats.ticks, layer: window.__dny.view().layer, F: window.__dny.view().permanent.failure }));
+ok(after.layer === before.layer, `刷新后仍在第 ${after.layer} 层`);
+ok(Math.abs(after.ticks - before.ticks) <= 40, `刷新后续跑 tick 未倒退（${before.ticks} → ${after.ticks}）`);
+ok(JSON.stringify(after.F) === JSON.stringify(before.F), '永久状态未丢');
 
-console.log('\n[6] 窄屏');
-await page.setViewportSize({ width: 420, height: 820 });
-await page.waitForTimeout(300);
-const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-ok(overflow <= 2, `无横向溢出（${overflow}px）`);
-await page.screenshot({ path: path.join(shotDir, '42-play-mobile.png') });
+console.log('\n[4] 窄屏');
+await page.setViewportSize({ width: 390, height: 844 });
+await page.waitForTimeout(400);
+const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+ok(overflow <= 2, `窄屏无横向溢出（溢出 ${overflow}px）`);
+await page.screenshot({ path: path.join(shotDir, 'v5-mobile.png'), fullPage: false });
+
+ok(consoleErrors.length === 0, `控制台 0 报错（${consoleErrors.length}）`);
+for (const e of consoleErrors) console.log('    ' + e);
 
 await browser.close();
-console.log('\n================ 结果 ================');
 if (problems.length) {
-  console.log(`❌ ${problems.length} 个问题：`);
-  problems.forEach((p) => console.log('  - ' + p));
-  process.exitCode = 1;
-} else {
-  console.log('✅ 模拟游玩通过：剧情/升级/暂停/净化/覆灭/续玩/窄屏都正常');
+  console.log(`\n有 ${problems.length} 个问题：`);
+  for (const p of problems) console.log(' - ' + p);
+  process.exit(1);
 }
+console.log('\n[play] 全部通过');

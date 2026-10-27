@@ -1,41 +1,40 @@
-// sim/probe.mjs — 单次轨迹探针：打印一条时间线的关键数值
-// 用法：node sim/probe.mjs [strategy] [maxSeconds]
-import { Engine, createInitialState, tierCapLog, tierStartLog } from '../src/engine.js';
-import { Dec } from '../src/num.js';
-import { CHARACTERS, CHARACTER_ORDER, TUNING } from '../src/db.js';
-import { makeBot } from './bot.js';
+// sim/probe.mjs — 单次轨迹探针：每 5 秒打一行当前片段的关键量
+//
+// 用法：node sim/probe.mjs [maxSeconds]
 
-const strategy = process.argv[2] || 'value';
-const maxSeconds = Number(process.argv[3] || 600);
+import { Engine, createInitialState } from '../src/engine.js';
+import { CONFIG } from '../src/v5.js';
 
-const st = createInitialState();
-const eng = new Engine(st);
-const bot = makeBot(strategy);
+const maxSeconds = Number(process.argv[2] || 600);
+const engine = new Engine(createInitialState());
+const limit = Math.floor(maxSeconds / CONFIG.dt);
+const f = (x, d = 3) => (Number.isFinite(x) ? x.toFixed(d) : '—');
 
-let lastPrint = 0;
-let runs = 0;
+let lastPrint = -1;
+let segments = 0;
 const t0 = Date.now();
-let guard = 0;
-while (eng.s.t < maxSeconds && guard++ < 200000) {
-  const ev = eng.tick(TUNING.tickSeconds);
-  bot(eng, TUNING.tickSeconds);
-  if (ev) {
-    runs++;
-    const s = eng.s;
-    console.log(`[${ev}] run#${runs} t=${s.t.toFixed(1)}s tier=${s.tier} mtc=e${Dec.log10(s.mtc).toFixed(1)} mp=e${Dec.log10(s.mp).toFixed(2)} pp=e${Dec.log10(s.pp).toFixed(2)} ap=${s.ap.toString()} pp_gained`);
-    lastPrint = 0;
+for (let n = 0; n < limit && !engine.state.finished; n++) {
+  const r = engine.tick();
+  if (r) {
+    segments++;
+    const v = engine.view();
+    console.log(`[${r.win ? '守护' : '覆灭'}] 档${r.layer} run#${engine.state.stats.runs} `
+      + `片段 ${f(r.time)}s 峰值 ${f(r.actualPeak, 4)} 压力 ${f(r.pressure, 4)} `
+      + `购买 ${r.purchaseCount} 次 hits=${r.hits} F[${engine.permanent.failure}] U[${engine.permanent.success}]`);
+    lastPrint = -1;
+    continue;
   }
-  if (eng.s.won) { console.log('*** 通关 ***'); break; }
-  if (eng.s.stats.playTime - lastPrint > 5) {
-    lastPrint = eng.s.stats.playTime;
-    const b = eng.bonuses();
-    const s = eng.s;
+  const sec = Math.floor(engine.state.stats.playTime / 5) * 5;
+  if (sec !== lastPrint && sec <= maxSeconds) {
+    lastPrint = sec;
+    const v = engine.view();
+    const e = v.effects;
     console.log(
-      `t=${s.t.toFixed(1).padStart(6)} tier=${s.tier} S=e${Dec.log10(s.S).toFixed(1)} ` +
-      `mtc=e${Dec.log10(s.mtc).toFixed(1)} prod=e${Dec.log10(b.prodTotal).toFixed(1)} ` +
-      `eta=e${Dec.log10(b.eta).toFixed(1)} pur=e${Dec.log10(b.purifyTea).toFixed(1)} ` +
-      `dmg=e${Dec.log10(b.dmgTotal).toFixed(1)} lv=${CHARACTER_ORDER.map((id) => s.unlocked.includes(id) ? s.chars[id].upgrades.reduce((a, v) => a + v, 0) : '-').join('/')}`,
+      `t=${String(sec).padStart(5)}s 档${v.layer} 净化力 ${f(v.powerDisplay, 4).padStart(10)}/${f(v.target, 3)} `
+      + `深渊 ${f(v.pressureDisplay, 4).padStart(10)} (压迫 ${f(v.pressureRatio, 2)}) `
+      + `mtc ${f(v.currencyDisplay, 3).padStart(10)} `
+      + `P ${f(e.production, 4)} eta ${f(e.conversion, 3)} first ${f(e.first, 2)}`,
     );
   }
 }
-console.log('elapsed', (Date.now() - t0) / 1000, 's; runs =', runs);
+console.log(`用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，片段 ${segments} 个`);

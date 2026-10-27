@@ -1,47 +1,29 @@
-// sim/run.mjs — 多线程批量模拟 + 统计报告
-// 用法：node sim/run.mjs [每种策略的时间线数] [线程数] [maxHours] [dt]
-// 输出：通关率、平均总时长、每档耗时、每轮时长、卡点位置
-import os from 'node:os';
-import { Worker } from 'node:worker_threads';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// sim/run.mjs — 批量确认：V5 是确定性的，同参数跑 N 次必须字节级相同
+//
+// 旧版这里是"多线程 × 三种机器人策略"的调参工具；V5 只有一条冻结策略
+// （全局最便宜优先自动购买，数值设计 §1），所以它退化成一个确定性/回归检查器。
+//
+// 用法：node sim/run.mjs [次数]
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const perStrategy = Number(process.argv[2] || 8);
-const threads = Number(process.argv[3] || Math.min(16, Math.max(2, os.cpus().length - 1)));
-const maxHours = Number(process.argv[4] || 60);
-const dt = Number(process.argv[5] || 1);
-const strategies = ['value', 'cheapest', 'preset'];
+import assert from 'node:assert/strict';
+import { simulate } from './simulate.mjs';
 
-const perWorker = Math.max(1, Math.ceil(perStrategy / threads));
-const jobs = [];
-for (let i = 0; i < threads; i++) {
-  jobs.push(new Promise((resolve) => {
-    const w = new Worker(path.join(here, 'worker.mjs'), {
-      workerData: { strategies, perWorker, maxHours, dt },
-    });
-    w.on('message', resolve);
-    w.on('error', (e) => { console.error('worker error', e); resolve([]); });
-  }));
-}
-
+const times = Math.max(1, Math.min(20, Number(process.argv[2] || 3)));
 const t0 = Date.now();
-const results = (await Promise.all(jobs)).flat();
-console.log(`跑完 ${results.length} 条时间线，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，线程 ${threads}\n`);
-
-const byStrategy = {};
-for (const r of results) (byStrategy[r.strategy] ||= []).push(r);
-
-for (const [strategy, list] of Object.entries(byStrategy)) {
-  const won = list.filter((r) => r.won);
-  const avg = (arr, f) => (arr.length ? arr.reduce((a, r) => a + f(r), 0) / arr.length : NaN);
-  const hours = won.map((r) => r.hours).sort((a, b) => a - b);
-  console.log(`【${strategy}】通关率 ${(won.length / list.length * 100).toFixed(0)}%  平均 ${avg(won, (r) => r.hours).toFixed(2)}h  中位 ${hours.length ? hours[Math.floor(hours.length / 2)].toFixed(2) : '-'}h  轮数 ${avg(won, (r) => r.cycles).toFixed(0)}`);
-  const tierH = [0, 1, 2, 3].map((k) => avg(won, (r) => (r.tierTimes[k] || 0) * 3600) / 3600);
-  console.log(`  每档耗时(h)：${tierH.map((x) => x.toFixed(2)).join(' / ')}`);
-  const col = [0, 1, 2, 3].map((k) => avg(won, (r) => r.tierCollapses[k] || 0).toFixed(0));
-  console.log(`  每档覆灭轮数：${col.join(' / ')}`);
-  // 卡点：哪一档的覆灭轮数最多
-  const stuck = col.indexOf(col.slice().sort((a, b) => b - a)[0]);
-  console.log(`  卡点（覆灭最多）：档 ${stuck}`);
+const first = simulate({});
+for (let i = 2; i <= times; i++) {
+  const again = simulate({});
+  assert.deepEqual(
+    { p: again.permanent, r: again.runs.length, s: again.seconds, f: again.failures },
+    { p: first.permanent, r: first.runs.length, s: first.seconds, f: first.failures },
+    `第 ${i} 次结果与第 1 次不同：数值被改动了？`,
+  );
 }
+const f = (x) => x.toFixed(2);
+console.log(`跑完 ${times} 条时间线，用时 ${((Date.now() - t0) / 1000).toFixed(1)}s，结果全部一致\n`);
+console.log(`轮数 ${first.runs.length}  累计 ${f(first.seconds)}s（${f(first.seconds / 3600)} 小时）`);
+console.log(`失败次数 ${JSON.stringify(first.failures)}`);
+console.log(`F[${first.permanent.failure}]  U[${first.permanent.success}]  `
+  + `WF=${first.permanent.failureWallet}  WS=${first.permanent.successWallet}`);
+console.log(`每档失败轮数：${first.failures.map((n, i) => `档${i}:${n}`).join('  ')}`);
+console.log(`每次覆灭时长：${first.runs.filter((r) => r.failedLayer).map((r) => f(r.time)).join(' / ')}`);
