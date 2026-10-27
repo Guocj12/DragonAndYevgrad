@@ -42,6 +42,11 @@ const refSegs = reference.runs.flatMap((run) => run.segments);
 
 const t0 = Date.now();
 const engine = new Engine(createInitialState());
+// 「基准模式」：自动购买科技全部 22 级（= 每 tick 购买最大数量）+ 自动结算开。
+// 这才是 docs/数值设计.md §13 参考模拟器对应的配置；游戏默认是 0 级 + 弹窗手动。
+for (const id of ['249', 'yewei', 'baiqi', 'heng']) engine.s.autoBuyLv[id] = 22;
+engine.s.auto.collapse = true;
+engine.s.auto.guard = true;
 const segs = [];
 let guard = 0;
 while (!engine.state.finished && guard++ < 5e6) {

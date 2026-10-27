@@ -19,7 +19,34 @@ import { STORY } from './story.js';
 import { ACHIEVEMENTS } from './achievements.js';
 
 export const STATE_VERSION = 'v5';
-export const ENGINE_VERSION = 5;
+export const ENGINE_VERSION = 6;
+
+// ─────────────────────────────────────────────────────────────
+// 自动购买科技（每角色一条，0..22 级）
+//   1–8 级：每 1 秒自动购买一次「第 L 个」升级（若已解锁且钱够）
+//   9–21 级：触发间隔 ×0.8/级（L21 ≈ 0.055s ≈ 18.2 次/秒的单次购买）
+//   22 级（满级）：每 tick（0.05s）执行一次「购买最大数量」= 20Hz 全自动
+// 价格：249 前 8 级各 2，之后每级 ×2；其余角色前 8 级各 4 / 8 / 16，之后每级 ×2。
+// 货币：记忆点数（MP）。
+// ─────────────────────────────────────────────────────────────
+export const AUTO_MAX_LEVEL = 22;
+export const AUTO_BASE_COST = [2, 4, 8, 16];   // 层 1..4 的前 8 级单价
+export const AUTO_INTERVAL_BASE = 1;           // 1–8 级的触发间隔（秒）
+export const AUTO_INTERVAL_STEP = 0.8;         // 9–21 级每级压缩倍率
+
+export function autoTechCost(layer, level) {
+  const base = AUTO_BASE_COST[layer - 1];
+  if (level < 8) return base;
+  return base * 2 ** (level - 7);
+}
+
+/** 自动购买科技的触发间隔（秒）；0 级 = 不自动买；满级返回 0 表示"每 tick 购买最大数量" */
+export function autoTechInterval(level, maxLevel = AUTO_MAX_LEVEL) {
+  if (level <= 0) return Infinity;
+  if (level <= 8) return AUTO_INTERVAL_BASE;
+  if (level >= maxLevel) return 0;
+  return AUTO_INTERVAL_BASE * AUTO_INTERVAL_STEP ** (level - 8);
+}
 
 /** 全新状态（§2.2） */
 export function createInitialState() {
@@ -32,7 +59,13 @@ export function createInitialState() {
     seg: null,               // 运行时由引擎持有，存档时写进去
     runIndex: 1,
     finished: false,
-    autoBuy: true,           // 自动购买（数值基准默认开；关掉=纯手动，只改购买时机不改公式）
+    // 自动购买科技：每角色一条 0..22 级（默认 0 = 全手动；数值基准 = 全部 22 级）
+    autoBuyLv: { 249: 0, yewei: 0, baiqi: 0, heng: 0 },
+    autoTimer: { 249: 0, yewei: 0, baiqi: 0, heng: 0 },
+    // 自动结算（默认全关：覆灭/守护都弹窗，点了才继续）
+    auto: { collapse: false, guard: false },
+    pending: null,           // null | { kind: 'collapse' | 'guard', layer, win, time, preview }
+    pendingResult: null,     // 待结算片段的完整结果（存档要带）
     // 剧情 / 暂停（外壳，不影响数值）
     paused: false,
     storyQueue: [],
@@ -74,13 +107,19 @@ export class Engine {
     }
     this.storyConditions = true;
     this.b = null;
+    // 自动购买科技：补齐字段（老档没有就全部 0 级 = 全手动）
+    const lv = Object.assign({ 249: 0, yewei: 0, baiqi: 0, heng: 0 }, this.s.autoBuyLv || {});
+    for (const id of CHARACTER_ORDER) lv[id] = Math.max(0, Math.min(AUTO_MAX_LEVEL, Number(lv[id]) || 0));
+    this.s.autoBuyLv = lv;
+    this.s.autoTimer = Object.assign({ 249: 0, yewei: 0, baiqi: 0, heng: 0 }, this.s.autoTimer || {});
+    this.s.auto = Object.assign({ collapse: false, guard: false }, this.s.auto || {});
     if (this.s.seg && this.s.seg.tickIndex > 0) {
       this.seg = Segment.fromJSON(this.s.layer, this.s.permanent, this.s.seg);
+      this.seg.autoBuy = false;
+      this.seg.buyer = (sg) => this.autoBuyStep(sg);
     } else {
-      this.seg = new Segment(this.s.layer, this.s.permanent, { runTicks: this.s.runTicks, autoBuy: this.s.autoBuy !== false });
+      this.seg = this.makeSegment(this.s.layer, this.s.runTicks);
     }
-    this.s.autoBuy = this.s.autoBuy !== false;
-    this.seg.autoBuy = this.s.autoBuy;
   }
 
   get state() { return this.s; }
@@ -92,18 +131,124 @@ export class Engine {
   /** 显示口径 = 内部 × 单位倍率（§2.1） */
   display(v) { return v * this.unit; }
 
+  /** 段构造：永远接上 buyer（自动购买科技），内建全自动关闭 */
+  makeSegment(layer, runTicks) {
+    const seg = new Segment(layer, this.permanent, { runTicks });
+    seg.autoBuy = false;
+    seg.buyer = (sg) => this.autoBuyStep(sg);
+    return seg;
+  }
+
   // ── 一个 20Hz tick（§8 的九步全在 v5.Segment.tick 里）──
   tick() {
     const s = this.s;
     if (s.finished) return null;
+    if (s.pending) return null;                 // 等玩家点「覆灭 / 守护」弹窗
     if (s.paused || s.storyActive) return null;
     if (s.storyQueue.length) return null;
     const result = this.seg.tick();
     s.stats.playTime += CONFIG.dt;
     s.stats.ticks++;
     if (!result) { this.checkStoryConditions(); return null; }
-    this.finishSegment(result);
-    return result;
+    const kind = result.win ? 'guard' : 'collapse';
+    if (s.auto[kind]) {                        // 自动结算（默认关）
+      this.finishSegment(result);
+      return result;
+    }
+    // 默认：停下来弹窗，玩家点了才结算并继续
+    s.pendingResult = result;
+    s.pending = {
+      kind, layer: result.layer, win: result.win, time: result.time,
+      preview: this.previewSettlement(result),
+    };
+    s.paused = true;
+    return null;
+  }
+
+  /** 结算预览（在副本上跑 settle，不动真正状态） */
+  previewSettlement(result) {
+    const copy = {
+      failure: [...this.permanent.failure], success: [...this.permanent.success],
+      failureWallet: this.permanent.failureWallet, successWallet: this.permanent.successWallet,
+    };
+    const ev = settleNumeric(copy, result);
+    const idx = result.layer - 1;
+    return {
+      kind: ev.kind, layer: result.layer, gained: ev.gained, spent: ev.spent,
+      levelsGained: copy[ev.kind][idx] - this.permanent[ev.kind][idx],
+      walletAfter: copy[`${ev.kind}Wallet`],
+    };
+  }
+
+  /** 玩家点了弹窗按钮：结算该片段并继续 */
+  resolvePending() {
+    const s = this.s;
+    if (!s.pending || !s.pendingResult) return null;
+    const result = s.pendingResult;
+    s.pending = null;
+    s.pendingResult = null;
+    s.paused = false;
+    return this.finishSegment(result);
+  }
+
+  // ── 自动购买科技（0..22 级，每角色一条）──
+  autoBuyInfo(charId) {
+    const layer = CHAR_TO_LAYER[charId];
+    const level = this.s.autoBuyLv[charId] || 0;
+    let effect;
+    if (level <= 0) effect = '不自动购买（全靠手动）';
+    else if (level <= 8) effect = `每 1 秒自动购买一次第 ${level} 个升级`;
+    else if (level < AUTO_MAX_LEVEL) {
+      const iv = autoTechInterval(level);
+      effect = `每 ${iv.toFixed(4)} 秒自动购买一次「该角色最便宜的升级」≈ ${(1 / iv).toFixed(1)} 次/秒`;
+    } else effect = '每 0.05 秒（20Hz）执行一次「购买最大数量」';
+    return {
+      charId, layer, level, maxLevel: AUTO_MAX_LEVEL,
+      nextCost: level >= AUTO_MAX_LEVEL ? 0 : autoTechCost(layer, level),
+      affordable: level < AUTO_MAX_LEVEL && this.permanent.failureWallet >= autoTechCost(layer, level),
+      effect,
+      interval: autoTechInterval(level),
+    };
+  }
+
+  buyAutoTech(charId) {
+    const info = this.autoBuyInfo(charId);
+    if (info.level >= AUTO_MAX_LEVEL) return false;
+    if (this.permanent.failureWallet < info.nextCost) return false;
+    this.permanent.failureWallet -= info.nextCost;
+    this.s.autoBuyLv[charId] = info.level + 1;
+    return true;
+  }
+
+  /** 每 tick 在第 2 步被 Segment 调用：按各角色科技等级买 */
+  autoBuyStep(seg) {
+    const s = this.s;
+    const dt = CONFIG.dt;
+    let bought = 0;
+    for (const id of CHARACTER_ORDER) {
+      const layer = CHAR_TO_LAYER[id];
+      const lv = s.autoBuyLv[id] || 0;
+      if (lv <= 0) continue;
+      if (lv >= AUTO_MAX_LEVEL) {
+        // 满级：每 tick 一次「购买最大数量」（与数值基准完全一致）
+        bought += seg.buyCheapestLoop(seg.tickIndex * dt);
+        continue;
+      }
+      const interval = autoTechInterval(lv);
+      s.autoTimer[id] = (s.autoTimer[id] || 0) + dt;
+      if (s.autoTimer[id] + 1e-12 < interval) continue;
+      s.autoTimer[id] -= interval;
+      if (s.autoTimer[id] < 0) s.autoTimer[id] = 0;
+      if (lv <= 8) {
+        const index = (layer - 1) * 8 + (lv - 1);
+        if (seg.items[index] && seg.unlocked[index] && seg.currency >= seg.prices[index]) {
+          if (seg.buyItem(index)) bought++;
+        }
+      } else {
+        bought += seg.buyCheapestForOwner(layer);
+      }
+    }
+    return bought;
   }
 
   /** 片段结束：结算 → 换层 / 回第一层（§8、§9.1） */
@@ -140,7 +285,7 @@ export class Engine {
         return event;
       }
       s.layer = seg.layer + 1;
-      this.seg = new Segment(s.layer, this.permanent, { runTicks: s.runTicks, autoBuy: s.autoBuy !== false });
+      this.seg = this.makeSegment(s.layer, s.runTicks);
       this.s.seg = this.seg.toJSON();
       this.enqueueStory('guard', seg.layer);
       return event;
@@ -154,7 +299,7 @@ export class Engine {
     s.layer = 1;
     s.runTicks = 0;
     s.runIndex++;
-    this.seg = new Segment(1, this.permanent, { runTicks: 0, autoBuy: s.autoBuy !== false });
+    this.seg = this.makeSegment(1, 0);
     this.s.seg = this.seg.toJSON();
     this.enqueueStory('collapse', seg.layer);
     this.enqueueRestart();
@@ -219,14 +364,6 @@ export class Engine {
     return n;
   }
 
-  /** 自动购买开关（只切换「要不要在 tick 里自动买」，不改任何公式与价格） */
-  toggleAutoBuy(force) {
-    const v = force === undefined ? !this.s.autoBuy : !!force;
-    this.s.autoBuy = v;
-    this.seg.autoBuy = v;
-    return v;
-  }
-
   /** 下一个即将解锁的项（数组顺序里的第一个未解锁项），没有则 -1 */
   nextUnlockIndex() {
     return this.seg.unlocked.findIndex((u) => !u);
@@ -276,15 +413,20 @@ export class Engine {
     const def = CHARACTERS[charId];
     const layer = CHAR_TO_LAYER[charId];
     return def.techs.map((t) => {
-      const level = t.kind === 'failurePermanent'
-        ? this.permanent.failure[layer - 1]
-        : (t.kind === 'autoBuy' ? (this.s.autoBuy ? 1 : 0) : 0);
+      if (t.kind === 'autoBuy') {
+        const info = this.autoBuyInfo(charId);
+        return {
+          id: t.id, name: t.name, desc: t.desc, kind: t.kind,
+          level: info.level, maxLevel: info.maxLevel, maxed: info.level >= info.maxLevel,
+          nextCost: info.nextCost, affordable: info.affordable, effect: info.effect,
+          enabled: info.level > 0,
+        };
+      }
+      const level = this.permanent.failure[layer - 1];
       return {
         id: t.id, name: t.name, desc: t.desc, kind: t.kind, level,
-        enabled: t.kind === 'autoBuy' ? !!this.s.autoBuy : true,
-        maxLevel: t.maxLevel,
-        nextCost: t.kind === 'failurePermanent'
-          ? permanentCost('failure', layer, level) : 0,
+        maxLevel: t.maxLevel, enabled: true,
+        nextCost: permanentCost('failure', layer, level),
       };
     });
   }
@@ -315,7 +457,9 @@ export class Engine {
       runIndex: s.runIndex,
       finished: s.finished,
       paused: s.paused,
-      autoBuy: !!s.autoBuy,
+      autoBuyLv: Object.assign({}, s.autoBuyLv),
+      auto: Object.assign({}, s.auto),
+      pending: s.pending ? { ...s.pending } : null,
       target: this.targetDisplay,
       targetInternal: b,
       power: seg.power,

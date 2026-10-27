@@ -8,6 +8,15 @@
 import assert from 'node:assert/strict';
 import { Engine, createInitialState } from '../src/engine.js';
 
+// 「基准模式」：自动购买科技全 22 级 + 自动结算开（= 数值设计 §13 的参考配置）
+function baselineEngine() {
+  const e = new Engine(createInitialState());
+  for (const id of ['249', 'yewei', 'baiqi', 'heng']) e.s.autoBuyLv[id] = 22;
+  e.s.auto.collapse = true;
+  e.s.auto.guard = true;
+  return e;
+}
+
 function runToEnd(engine, limit = 5e6) {
   let n = 0;
   while (!engine.state.finished && n++ < limit) engine.tick();
@@ -35,7 +44,7 @@ function fingerprint(engine) {
 }
 
 // 基准：一口气跑完
-const baseline = runToEnd(new Engine(createInitialState()));
+const baseline = runToEnd(baselineEngine());
 const expected = fingerprint(baseline);
 console.log(`[v5-save-verify] 基准：${baseline.state.stats.runs} 轮 / ${baseline.state.stats.ticks} ticks / `
   + `${(baseline.state.stats.ticks * 0.05).toFixed(1)}s`);
@@ -44,7 +53,7 @@ console.log(`[v5-save-verify] 基准：${baseline.state.stats.runs} 轮 / ${base
 const cutPoints = [1, 123, 5000, 14999, 30000, 100000, 400001, 900000];
 
 for (const cut of cutPoints) {
-  const a = new Engine(createInitialState());
+  const a = baselineEngine();
   let n = 0;
   while (n < cut && !a.state.finished) { a.tick(); n++; }
   const text = a.save();

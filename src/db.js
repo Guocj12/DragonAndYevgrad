@@ -52,7 +52,7 @@ export const SUCCESS_NAMES = [
 const AUTO_TECH = {
   id: 'autobuy',
   name: '自动购买',
-  desc: '全局最便宜优先，每 tick 买到买不起（数值基准恒开）',
+  desc: '本角色的自动购买频率：1–8 级每秒买第 N 个；9–21 级间隔 ×0.8/级；22 级每 tick 买最大数量',
   cost: () => 0,
   maxLevel: 1,
   kind: 'autoBuy',

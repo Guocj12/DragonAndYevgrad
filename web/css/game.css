@@ -1050,3 +1050,8 @@ body {
 .c-buy-btn { margin-top: 0.1rem; padding: 0.45rem 0.8rem; }
 .l-upgrade-col { gap: 0.6rem; }
 .c-upgrade-col__head { padding: 0.3rem 0.4rem; }
+
+/* 覆灭 / 守护 结算弹窗 */
+.c-modal--pending { max-width: 52rem; }
+.c-pending-row { font-size: 1.35rem; line-height: 1.7; }
+.c-pending-row b { color: #cfe6ff; }

@@ -263,6 +263,32 @@ function hudVM() {
     paused: !!v.paused,
     finished: !!v.finished,
     wallets: { mp: money(v.wallets.mp), pp: money(v.wallets.pp) },
+    pendingKind: v.pending ? v.pending.kind : null,
+  };
+}
+
+// 覆灭 / 守护 结算弹窗（默认不自动，玩家点了才继续）
+function pendingVM() {
+  const v = engine.view();
+  if (!v.pending) return null;
+  const p = v.pending;
+  const pv = p.preview || {};
+  const isGuard = p.kind === 'guard';
+  return {
+    kind: p.kind,
+    guard: isGuard,
+    title: isGuard ? '深渊已清零 · 守护' : '深渊已追平 · 覆灭',
+    layer: p.layer,
+    layerName: TIER_NAMES[p.layer - 1],
+    time: formatTime(p.time),
+    gained: money(pv.gained || 0),
+    levelsGained: money(pv.levelsGained || 0),
+    walletAfter: money(pv.walletAfter || 0),
+    walletName: isGuard ? '守护点数 PP' : '记忆点数 MP',
+    next: isGuard
+      ? (p.layer === 4 ? '第四层成功：结算后通关' : `结算后进入第 ${p.layer + 1} 层「${TIER_NAMES[p.layer]}」`)
+      : '结算后回到第 1 层「奶茶店」',
+    button: isGuard ? '净化结算' : '覆灭结算',
   };
 }
 
@@ -320,20 +346,33 @@ function techsVM(charId) {
   const failName = (FAILURE_NAMES[layer - 1] || {}).name || '';
   return engine.techs(charId).map((t) => {
     const auto = t.kind === 'autoBuy';
+    if (auto) {
+      return {
+        id: t.id,
+        name: t.name,
+        kind: t.kind,
+        desc: t.desc,
+        levelText: `Lv ${money(t.level)} / ${t.maxLevel}`,
+        note: t.effect,
+        costText: t.maxed ? '已满级（20Hz 购买最大数量）' : `升级需要 ${money(t.nextCost)} 记忆点数（MP）`,
+        auto: true,
+        maxed: !!t.maxed,
+        affordable: !!t.affordable,
+        nextCost: money(t.nextCost),
+      };
+    }
     return {
       id: t.id,
       name: t.name,
-      desc: t.desc,
       kind: t.kind,
-      level: t.level,
-      levelText: auto ? (t.enabled ? '已启用' : '已停用') : `Lv ${money(t.level)}`,
-      costText: auto ? (t.enabled ? '每 tick 自动买到买不起' : '当前为手动购买模式') : `${money(t.nextCost)} 记忆点数（MP）`,
-      note: auto
-        ? '数值基准默认开启；停用后 tick 不再自动购买，由你在升级页手动买 / 按「购买最大数量」'
-        : `覆灭结算时用记忆点数自动购买（${failName}）`,
-      owned: auto ? t.enabled : false,
-      toggle: auto,
-      enabled: !!t.enabled,
+      desc: t.desc,
+      levelText: `Lv ${money(t.level)}`,
+      note: `覆灭结算时用记忆点数自动购买（${failName}）`,
+      costText: `下一级 ${money(t.nextCost)} 记忆点数（MP）`,
+      auto: false,
+      maxed: false,
+      affordable: false,
+      nextCost: money(t.nextCost),
     };
   });
 }
@@ -467,6 +506,8 @@ function buildVM() {
     hud: hudVM(),
     message,
     modal,
+    pending: pendingVM(),
+    auto: Object.assign({ collapse: false, guard: false }, engine.s.auto || {}),
     saveIssue,
     skipReadStories: !!(engine.s.settings && engine.s.settings.skipReadStories),
     saveKey: SAVE_KEY,
@@ -499,16 +540,32 @@ function act(action, payload) {
       else say(`「${name}」买不起：mtc 不够下一级的价格`);
       break;
     }
+    case 'buyAutoTech': {
+      const info = engine.autoBuyInfo(payload);
+      if (engine.buyAutoTech(payload)) say(`自动购买科技升到 Lv ${info.level + 1}：${engine.autoBuyInfo(payload).effect}`);
+      else say(info.level >= info.maxLevel ? '自动购买科技已满级（22 级）' : `记忆点数不够：需要 ${info.nextCost}`);
+      break;
+    }
+    case 'resolvePending': {
+      const p = engine.s.pending;
+      const ev = engine.resolvePending();
+      if (ev) {
+        const lv = ev.after[ev.kind][ev.layer - 1];
+        say(ev.kind === 'success'
+          ? `守护结算：获得 ${ev.gained} 守护点数，U${ev.layer} 升到 Lv ${lv}（花掉 ${ev.spent}）`
+          : `覆灭结算：获得 ${ev.gained} 记忆点数，F${ev.layer} 升到 Lv ${lv}（花掉 ${ev.spent}）`);
+      } else if (p) say('结算失败：没有待结算片段');
+      break;
+    }
+    case 'toggleAutoSettle': {
+      const kind = payload === 'guard' ? 'guard' : 'collapse';
+      engine.s.auto[kind] = !engine.s.auto[kind];
+      say(`${kind === 'guard' ? '自动守护' : '自动覆灭'}已${engine.s.auto[kind] ? '开启（结算不弹窗）' : '关闭（结算弹窗等你点）'}`);
+      break;
+    }
     case 'buyMax': {
       const n = engine.buyMaxOnce();
       say(n > 0 ? `本 tick 的自动购买已执行：一口气买了 ${n} 级` : '当前 mtc 买不起任何一项');
-      break;
-    }
-    case 'toggleAutoBuy': {
-      const on = engine.toggleAutoBuy();
-      say(on
-        ? '自动购买已开启：每 tick 最便宜优先买到买不起（数值基准）'
-        : '自动购买已停用：tick 不再自动买，由你手动买或用「购买最大数量」');
       break;
     }
     case 'pause': {
@@ -703,7 +760,7 @@ const app = new Vue({
         <button v-for="st in subTabs" :key="st.id"
           class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.sub === st.id }"
           @click="act('sub', st.id)">{{ st.name }}</button>
-        <span class="c-hint">8 项升级由 20Hz tick 自动购买；也可以手动加买</span>
+        <span class="c-hint">可以手动买；自动购买频率由「科技」页的自动购买科技等级决定</span>
       </div>
 
       <div class="l-old-ui__page l-tab-page">
@@ -729,7 +786,7 @@ const app = new Vue({
           <template v-if="vm.sub === 'upgrades'">
             <div class="l-section-title l-section-title--buy">
               <span>升级</span>
-              <span class="c-hint">手动买单项；「购买最大数量」= 把本 tick 的自动购买立刻执行一次。自动购买本身可在「科技」页开关（默认开）</span>
+              <span class="c-hint">手动买单项；「购买最大数量」= 把本 tick 的全自动购买立刻执行一次（不受自动购买科技等级限制）</span>
               <button class="o-primary-btn c-buy-max" @click="act('buyMax')">购买最大数量</button>
             </div>
             <div v-if="!vm.body.items.live" class="c-dim-note c-page-note">{{ vm.body.items.note }}</div>
@@ -775,10 +832,10 @@ const app = new Vue({
 
           <!-- 科技 -->
           <template v-else-if="vm.sub === 'techs'">
-            <div class="l-section-title">科技 <span class="c-hint">自动购买可开关（默认开）；失败永久 F 由覆灭结算自动购买</span></div>
+            <div class="l-section-title">科技 <span class="c-hint">自动购买科技用记忆点数（MP）升级；失败永久 F 由覆灭结算自动购买</span></div>
             <div class="l-upgrade-grid">
               <div v-for="t in vm.body.techs" :key="t.id"
-                class="c-upgrade-btn c-upgrade-btn--tech" :class="{ 'c-upgrade-btn--owned': t.owned }">
+                class="c-upgrade-btn c-upgrade-btn--tech" :class="{ 'c-upgrade-btn--owned': t.maxed }">
                 <div class="c-upgrade-btn__head">
                   <span>{{ t.name }}</span>
                   <span class="c-upgrade-btn__level">{{ t.levelText }}</span>
@@ -786,9 +843,13 @@ const app = new Vue({
                 <div class="c-upgrade-btn__desc">{{ t.desc }}</div>
                 <div class="c-upgrade-btn__preview">{{ t.note }}</div>
                 <div class="c-upgrade-btn__cost">{{ t.costText }}</div>
-                <button v-if="t.toggle" class="o-primary-btn c-tech-toggle" @click="act('toggleAutoBuy')">
-                  {{ t.enabled ? '停用自动购买' : '启用自动购买' }}
+                <button v-if="t.auto && !t.maxed" class="c-buy-btn"
+                  :class="t.affordable ? 'is-affordable' : 'is-poor'"
+                  @click="act('buyAutoTech', vm.tab)">
+                  <span class="c-buy-btn__label">升级</span>
+                  <span class="c-buy-btn__price">{{ t.nextCost }} MP</span>
                 </button>
+                <div v-if="t.auto && t.maxed" class="c-dim-note">满级：每 0.05 秒执行一次「购买最大数量」</div>
               </div>
             </div>
           </template>
@@ -884,7 +945,9 @@ const app = new Vue({
           <div class="l-options-row">
             <button class="o-primary-btn" @click="act('pause')">{{ vm.hud.paused ? '▶ 继续' : '⏸ 暂停' }}</button>
             <button class="o-primary-btn" @click="act('toggleSkipRead')">跳过已读剧情：{{ vm.skipReadStories ? '开' : '关' }}</button>
-            <span class="c-dim-note">开启后，看过的剧情不再自动弹出（没看过的照常播放）</span>
+            <button class="o-primary-btn" @click="act('toggleAutoSettle', 'collapse')">自动覆灭结算：{{ vm.auto.collapse ? '开' : '关' }}</button>
+            <button class="o-primary-btn" @click="act('toggleAutoSettle', 'guard')">自动守护结算：{{ vm.auto.guard ? '开' : '关' }}</button>
+            <span class="c-dim-note">开启后，看过的剧情不再自动弹出（没看过的照常播放）。自动结算默认关：覆灭/守护都会弹窗，点了才继续。</span>
           </div>
 
           <div class="l-section-title">玩家</div>
@@ -934,7 +997,7 @@ const app = new Vue({
 
           <div class="l-section-title">玩法速记</div>
           <div class="c-dim-note c-page-note">
-            每 0.05 秒一个 tick：最便宜优先自动购买 → 产出净化力与 mtc → 深渊随时间上升。
+            每 0.05 秒一个 tick：按自动购买科技等级购买（0 级=全手动）→ 产出净化力与 mtc → 深渊随时间上升。
             净化力到突破目标即进下一层；深渊 ÷ 净化力 到 1 即覆灭（回第一层，永久等级保留）。
             剧情播放与暂停时 tick 完全停止。
           </div>
@@ -956,6 +1019,19 @@ const app = new Vue({
         <div v-if="storySpeaker" class="c-story-speaker">{{ storySpeaker }}</div>
         <div class="c-story-text">{{ storyLine }}</div>
         <div class="c-story-hint">点击继续 · {{ storyProgress }}</div>
+      </div>
+
+      <!-- ── 覆灭 / 守护 结算弹窗（默认不自动，点了才继续）── -->
+      <div class="l-modal-wrap" v-if="vm.pending && !story" @click.self="act('resolvePending')">
+        <div class="c-modal c-modal--pending">
+          <div class="c-modal__title">{{ vm.pending.title }}</div>
+          <div class="c-pending-row">第 {{ vm.pending.layer }} 层「{{ vm.pending.layerName }}」· 片段 {{ vm.pending.time }}</div>
+          <div class="c-pending-row">获得 <b>{{ vm.pending.gained }}</b> {{ vm.pending.walletName }}，自动买到 <b>{{ vm.pending.levelsGained }}</b> 级（余额 {{ vm.pending.walletAfter }}）</div>
+          <div class="c-pending-row c-dim-note">{{ vm.pending.next }}</div>
+          <div class="l-options-row">
+            <button class="o-primary-btn" data-action="resolve" @click="act('resolvePending')">{{ vm.pending.button }}</button>
+          </div>
+        </div>
       </div>
 
       <!-- ── 通关面板 ── -->

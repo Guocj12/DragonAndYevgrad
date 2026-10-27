@@ -10,13 +10,22 @@ import assert from 'node:assert/strict';
 import { Engine, createInitialState } from '../src/engine.js';
 import { STORY } from '../src/story.js';
 
+// 基准模式：自动购买科技全 22 级 + 自动结算开（否则默认是全手动 + 弹窗，不会自己走完）
+function baselineEngine() {
+  const e = new Engine(createInitialState());
+  for (const id of ['249', 'yewei', 'baiqi', 'heng']) e.s.autoBuyLv[id] = 22;
+  e.s.auto.collapse = true;
+  e.s.auto.guard = true;
+  return e;
+}
+
 const problems = [];
 const ok = (c, m) => { console.log(`  ${c ? '✅' : '❌'} ${m}`); if (!c) problems.push(m); };
 
 // ── 1. 空表时不触发任何剧情 ──
 ok(STORY.length === 0, `src/story.js 当前是空表（${STORY.length} 条）`);
 {
-  const e = new Engine(createInitialState());
+  const e = baselineEngine();
   for (let i = 0; i < 20000; i++) e.tick();
   ok(e.state.storyQueue.length === 0 && !e.state.storyActive, '空表时不会弹剧情、不会暂停');
 }
@@ -33,7 +42,7 @@ STORY.push(
 const boom = () => { throw new Error('剧情条目触发了未定义的访问'); };
 
 {
-  const e = new Engine(createInitialState());
+  const e = baselineEngine();
   // 首次覆灭
   while (e.state.stats.collapses === 0) {
     if (e.state.storyQueue.length) {
@@ -73,7 +82,7 @@ const boom = () => { throw new Error('剧情条目触发了未定义的访问');
 
 // ── 3. 剧情暂停不改变数值：带剧情跑完整程 ──
 {
-  const e = new Engine(createInitialState());
+  const e = baselineEngine();
   let guard = 0;
   while (!e.state.finished && guard++ < 5e6) {
     while (e.state.storyQueue.length) e.finishStory();

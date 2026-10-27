@@ -20,6 +20,15 @@ page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(`consol
 await page.goto(URL, { waitUntil: 'load' });
 await page.waitForFunction(() => window.__dny && window.__dny.view, null, { timeout: 10000 });
 
+// 「基准模式」：自动购买科技全 22 级 + 自动结算开（页面上就是把这几个开关拨到位，
+// 与玩家手动点等价，不跳时间、不改数值）
+await page.evaluate(() => {
+  const e = window.__dny.engine;
+  for (const id of ['249', 'yewei', 'baiqi', 'heng']) e.s.autoBuyLv[id] = 22;
+  e.s.auto.collapse = true;
+  e.s.auto.guard = true;
+});
+
 // 记录每次片段结束（通过 runIndex / layer / collapses 变化观察），顺便累计 tick
 const marks = [];
 let lastKey = '';

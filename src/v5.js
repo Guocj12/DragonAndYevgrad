@@ -220,9 +220,11 @@ export class Segment {
     this.removedTotal = 0;
     this.audit = !!options.audit;
     this.trace = !!options.trace;
-    // 是否在 tick 内自动购买（默认开 = 数值基准；关掉之后由玩家手动买，
-    // 只会改变"购买时机"，不会改变任何价格/效果公式）
+    // 是否在 tick 内自动购买（默认开 = 数值基准；外壳会接管成"按自动购买科技等级买"）
     this.autoBuy = options.autoBuy !== false;
+    // 外壳注入的购买回调（在 tick 的第 2 步被调用，位置与参考模拟器的购买循环完全一致）。
+    // 返回本次买了几级。不注入时退回 autoBuy 的整段「最便宜优先」循环。
+    this.buyer = null;
     // 外壳用：本 tick 的效果快照（不改动任何数值）
     this.lastEffects = null;
   }
@@ -243,7 +245,8 @@ export class Segment {
       }
     }
     let bought = false;
-    bought = this.autoBuy ? this.buyCheapestLoop(tick * dt) > 0 : false;
+    if (this.buyer) bought = this.buyer(this) > 0;
+    else if (this.autoBuy) bought = this.buyCheapestLoop(tick * dt) > 0;
     if (bought) {
       this.purchaseTicks++;
       this.maxPurchaseGap = Math.max(this.maxPurchaseGap, tick * dt - this.lastPurchase);
@@ -318,6 +321,18 @@ export class Segment {
     this.prices[i] = item.firstPrice * Math.exp(item.logStep * this.levels[i]);
     this.purchaseCount++;
     return true;
+  }
+
+  // 只在该所属层的 8 项里买「最便宜的一级」（自动购买科技 9–21 级用）
+  buyCheapestForOwner(owner) {
+    let best = -1;
+    const from = (owner - 1) * 8, to = owner * 8;
+    for (let i = from; i < to; i++) {
+      if (!this.unlocked[i]) continue;
+      if (best === -1 || this.prices[i] < this.prices[best]) best = i;
+    }
+    if (best === -1) return 0;
+    return this.buyItem(best) ? 1 : 0;
   }
 
   result(win) {
