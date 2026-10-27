@@ -770,7 +770,7 @@ const app = new Vue({
 
           <!-- 科技 -->
           <template v-else-if="vm.sub === 'techs'">
-            <div class="l-section-title">科技 <span class="c-hint">自动购买恒开；失败永久由覆灭结算自动购买</span></div>
+            <div class="l-section-title">科技 <span class="c-hint">自动购买可开关（默认开）；失败永久 F 由覆灭结算自动购买</span></div>
             <div class="l-upgrade-grid">
               <div v-for="t in vm.body.techs" :key="t.id"
                 class="c-upgrade-btn c-upgrade-btn--tech" :class="{ 'c-upgrade-btn--owned': t.owned }">
