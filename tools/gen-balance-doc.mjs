@@ -1,12 +1,16 @@
-// tools/gen-balance-doc.mjs — 从 src/v5.js + src/db.js 导出数值表到 docs/16-数值表.md
+// tools/gen-balance-doc.mjs — 从 src/v8.js + src/db.js 导出数值表到 docs/16-数值表.md
 //
-// 用法：node tools/gen-balance-doc.mjs
-// 说明：**这里一个数值都不定义**，全部从代码里读出来排版。数值的权威是
-//       docs/数值设计.md；本文件只是"当前代码实际是什么"的快照，方便对照。
-
+//   node tools/gen-balance-doc.mjs
+//
+// 说明：**这里一个数值都不定义**，全部从代码读出来排版。数值的权威是 docs/数值设计.md；
+//       本文件只回答"当前代码实际跑出来是什么"。
 import fs from 'node:fs';
-import { CONFIG, specification, permanentCost, campaign } from '../src/v5.js';
-import { ITEM_NAMES, FAILURE_NAMES, SUCCESS_NAMES, TIER_NAMES } from '../src/db.js';
+import {
+  CONFIG, specification, permanentCost, campaign, batchCost,
+} from '../src/v8.js';
+import {
+  ITEM_NAMES, FAILURE_NAMES, SUCCESS_NAMES, TIER_NAMES, AUTO_BASE_COST,
+} from '../src/db.js';
 
 const lines = [];
 const push = (s = '') => lines.push(s);
@@ -19,123 +23,79 @@ const num = (x) => {
   return String(Number(x.toFixed(6)));
 };
 
-push('# 16 — 数值表（由代码生成）');
+push('# 16 — 数值表（自动生成，勿手改）');
 push('');
-push('> **本文件由 `tools/gen-balance-doc.mjs` 从 `src/v5.js` + `src/db.js` 自动导出。**');
-push('> 数值的唯一权威是 [`数值设计.md`](数值设计.md)（V5）；本文件只是"当前代码实际跑出来是什么"的快照。');
-push('> 生成命令：`node tools/gen-balance-doc.mjs`；对拍命令：`node tools/v5-verify.mjs`、`node tools/v5-engine-verify.mjs`、`node tools/v5-audit.mjs`。');
+push('> **本文件由 `tools/gen-balance-doc.mjs` 从 `src/v8.js` + `src/db.js` 自动导出。**');
+push('> 数值唯一权威是 [`数值设计.md`](数值设计.md)（V8：八层 + 终局）；本文件只是"当前代码跑出来是什么"的快照。');
+push('> 生成：`node tools/gen-balance-doc.mjs`；对拍：`node tools/v8-verify.mjs`、`node tools/v8-engine-verify.mjs`、`node tools/v8-audit.mjs`、`node tools/v8-save-verify.mjs`。');
 push('');
 
-// ── 一、四层 ──
-push('## 一、四层（档）与单位');
+push('## 一、八层 + 终局的公式参数');
 push('');
-push('| 层 s | 档名 | 角色 | 显示目标 B | 内部目标 b=B/S | 单位 S | 生产系数 α | 压力基数 q0 | 压力时间 T |');
+push('| 层 s | 名称 | 真实目标 T_s | 工作坐标 q_s | alpha | 压力底 q0 | 压力 T 秒 | 生产系数 | replay knee | replay 系数 |');
+push('|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|');
+for (let s = 1; s <= 9; s++) {
+  push(`| ${s}${s === 9 ? '（终局）' : ''} | ${TIER_NAMES[s - 1]} | \`${CONFIG.targets[s - 1]}\` | ${num(CONFIG.coordinates[s - 1])} `
+    + `| ${num(CONFIG.alpha[s - 1])} | ${num(CONFIG.pressureBase[s - 1])} | ${num(CONFIG.pressureTime[s - 1])} `
+    + `| ${num(CONFIG.productionTech[s - 1])} | ${num(CONFIG.productionReplayKnee[s - 1])} | ${num(CONFIG.productionReplay[s - 1])} |`);
+}
+push('');
+push('真实量 = `Scientific(T_s).pow(log10(工作)/log10(q_s))`；层 1 是恒等变换。压力 = `q0·exp((t/T)^8)/(1+侵蚀)`。');
+push('');
+
+push('## 二、八种失败永久（n1..n8）与四项成功科技');
+push('');
+push(`失败价格 \`KF(owner,n)=ceil(baseF[owner]·${CONFIG.failRatio}^n)\`，failBase = ${JSON.stringify(CONFIG.failBase)}`);
+push('');
+push('| owner | 名称 | n=0 | n=1 | n=2 | n=3 | n=5 | n=10 |');
+push('|---:|---|---:|---:|---:|---:|---:|---:|');
+for (let i = 0; i < 8; i++) {
+  push(`| ${i + 1} | ${FAILURE_NAMES[i].name} | ${permanentCost('failure', i, 0)} | ${permanentCost('failure', i, 1)} `
+    + `| ${permanentCost('failure', i, 2)} | ${permanentCost('failure', i, 3)} | ${permanentCost('failure', i, 5)} | ${permanentCost('failure', i, 10)} |`);
+}
+push('');
+push(`成功价格 \`KS(i,u)=ceil(baseS[i]·ratioS[i]^u)\`，successBase = ${JSON.stringify(CONFIG.successBase)}，successRatio = ${JSON.stringify(CONFIG.successRatio)}`);
+push('');
+push('| i | 名称 | 倍率 | u=0 | u=1 | u=2 | u=5 | u=10 | u=20 |');
 push('|---:|---|---|---:|---:|---:|---:|---:|---:|');
-for (let s = 1; s <= 4; s++) {
-  push(`| ${s} | ${TIER_NAMES[s - 1]} | ${['249', '耶维奇', '白琦', '恒'][s - 1]} | ${num(CONFIG.targets[s - 1])} `
-    + `| ${num(CONFIG.targets[s - 1] / CONFIG.units[s - 1])} | ${num(CONFIG.units[s - 1])} `
-    + `| ${num(CONFIG.productionScale[s - 1])} | ${num(CONFIG.pressureBase[s - 1])} | ${num(CONFIG.pressureTimes[s - 1])} |`);
-}
+SUCCESS_NAMES.forEach((s, i) => {
+  push(`| ${i} | ${s.name} | ${s.stat} | ${permanentCost('success', i, 0)} | ${permanentCost('success', i, 1)} `
+    + `| ${permanentCost('success', i, 2)} | ${permanentCost('success', i, 5)} | ${permanentCost('success', i, 10)} | ${permanentCost('success', i, 20)} |`);
+});
 push('');
-push('压力公式：`q_s(t) = q0[s] · exp((t / T[s])^8)`；显示量 = 内部量 × S。');
+push(`自动购买科技价格：第 1–8 级各 ${JSON.stringify(AUTO_BASE_COST)} MP，之后每级 ×2（满级 22）。`);
 push('');
 
-// ── 二、32 项升级 ──
-push('## 二、32 项临时升级（价格 / 门槛 / 密度）');
-push('');
-push('`K(L) = firstPrice · exp(logStep·L)`，`firstPrice = base·expm1(logStep)/(ratio-1)`，`logStep = ln(ratio)/k`。');
-push('下表是**进入该层且该层为当前层时**的参数（旧层项在高层会换 k 与门槛，由 `specification(layer)` 现算）。');
-for (let layer = 1; layer <= 4; layer++) {
+for (let s = 1; s <= 8; s++) {
+  const items = specification(s).filter((i) => i.owner === s);
+  push(`## 三.${s} 第 ${s} 层（${TIER_NAMES[s - 1]}）当前层 8 项`);
   push('');
-  push(`### 层 ${layer} · ${TIER_NAMES[layer - 1]}（当前层 s=${layer}）`);
-  push('');
-  push('| ID | 名字 | kind | 门槛 | base | ratio | 密度 k | 首价 | 第 10 级价格 |');
-  push('|---|---|---:|---:|---:|---:|---:|---:|---:|');
-  for (const item of specification(layer)) {
-    const name = ITEM_NAMES[item.owner][item.position];
-    const priceAt10 = item.firstPrice * Math.exp(item.logStep * 10);
-    push(`| ${item.id} | ${name} | ${item.kind} | ${num(item.threshold)} | ${num(item.base)} `
-      + `| ${num(item.ratio)} | ${num(item.density)} | ${num(item.firstPrice)} | ${num(priceAt10)} |`);
+  push('| 项 | 名称 | 种类 | 基础价 base | 倍率 ratio | 密度 k | 解锁门槛 | 首价 firstPrice | L=0 总价校验 |');
+  push('|---|---|---|---:|---:|---:|---:|---:|---:|');
+  for (const it of items) {
+    const check = batchCost(it.firstPrice, it.step, it.density);
+    push(`| ${it.id} | ${ITEM_NAMES[s][it.position]} | ${it.kind === 0 ? '主机制' : '第二机制'} | ${num(it.base)} `
+      + `| ${num(it.ratio)} | ${num(it.density)} | ${num(it.threshold)} | ${num(it.firstPrice)} | ${num(check)} |`);
   }
+  push('');
 }
-push('');
-push('旧层项（`o < s`）门槛统一为 `1 + 0.1·p`，密度 `k = 8·10^(s-o)`；见 §3.3/§4.3。');
+push('L=0 总价校验 = `firstPrice·expm1(step·k)/expm1(step)`，必须等于 `base`（价格恒等式，§12.7）。');
 push('');
 
-// ── 三、永久体系 ──
-push('## 三、两套永久体系');
+const four = campaign({ through: 4 });
+const fourSeconds = four.runs.reduce((s, r) => s + r.time, 0);
+push('## 四、验收锚（本机跑出来的数）');
 push('');
-push('### 3.1 失败永久 F（记忆点数 MP 购买，覆灭结算自动购买）');
+push(`前四层检查点：${four.runs.length} 轮，合计 ${fourSeconds.toFixed(2)}s（${(fourSeconds / 3600).toFixed(4)} 小时），失败次数 [${four.failures.slice(0, 4)}]。`);
 push('');
-push('| 层 | 名字 | 成本公式 | 等级 0–5 的价格 | 机制 |');
-push('|---:|---|---|---|---|');
-const failMech = [
-  '第 1 层有效总等级抬高生产（log1p((a+b)/20)·1.6·F1）',
-  '两个原始生产来源互相借用 share=F2/(3+F2)',
-  '每第 5 次削减强化 1+3·ln(1+F3)',
-  '削减随整程时间 1+0.5·ln(1+F4)·sqrt(runTime/600)',
-];
-for (let s = 1; s <= 4; s++) {
-  const prices = [0, 1, 2, 3, 4, 5].map((n) => permanentCost('failure', s, n)).join(' / ');
-  push(`| ${s} | ${FAILURE_NAMES[s - 1].name} | ceil(${CONFIG.failure.costBase[s - 1]}·1.35^n) | ${prices} | ${failMech[s - 1]} |`);
-}
-push('');
-push('失败奖励：`QF = floor(4·10^(s-1+p))`，第一层 `p = log10(peak)/log10(b1)`，其他层 `p = (peak-1)/(b-1)`。');
-push('');
-push('### 3.2 成功永久 U（守护点数 PP 购买，守护结算自动购买）');
-push('');
-push('| 层 | 名字 | 每次守护获得 QS | 成本公式 | 等级 0–5 的价格 | 占位权重 |');
-push('|---:|---|---:|---|---|---:|');
-for (let s = 1; s <= 4; s++) {
-  const prices = [0, 1, 2, 3, 4, 5].map((n) => permanentCost('success', s, n)).join(' / ');
-  push(`| ${s} | ${SUCCESS_NAMES[s - 1].name} | ${CONFIG.success.reward[s - 1]} `
-    + `| ceil(${CONFIG.success.costBase[s - 1]}·1.6^n) | ${prices} `
-    + `| 通用 ${CONFIG.success.placeholderExponent[s - 1]} / 本层 ${CONFIG.success.ownPlaceholderExponent[s - 1]} |`);
-}
-push('');
-push('成功占位：`B_s = 10^(Σ 通用权重·U + 本层权重·U_s)`，只乘生产与普通单次削减。');
-push('');
-
-// ── 四、公式速查 ──
-push('## 四、公式速查');
+push('八层检查点与终局锚由 `node tools/v8-verify.mjs` 逐字段核对，摘要（与文档 §12.1 / §12.6 相同）：');
 push('');
 push('```text');
-push('firstBonus = s==1 ? exp(1.6·F1·ln(1+(a+b)/20)) : 1+0.08·(1.6·F1·ln(1+(a+b)/20))');
-push('rawFirst   = s==1 ? 1.5^a · firstBonus : (1+a) · firstBonus');
-push('rawSecond  = 1 + 3c          share = F2/(3+F2)');
-push('first      = rawFirst  + (s>=2 ? share·(rawSecond-1) : 0)');
-push('second     = rawSecond + share·(rawFirst-1)');
-push('global     = sqrt(1 + d/10)  eta = sqrt(1 + b/10)');
-push('P          = α[s]·B_s·global·(s==1 ? first : first+second-1)');
-push('x += P·dt                    r += eta·P·dt');
-push('frequency  = min(20, 1+2g)   overflow = sqrt(max(1,(1+2g)/20))');
-push('timeMul    = 1 + 0.5·ln(1+F4)·sqrt(runTime/600)');
-push('hit        = B_s·global·(1+e)·overflow·timeMul·(1 + ln(1+j)/10·sqrt(h/10))');
-push('burst      = 1 + 3·ln(1+F3)  （片段第 5/10/15… 次攻击替换使用）');
-push('removed    = min(h,hit)      h -= removed   r += 0.1·ln(1+f)·ln(1+removed)');
-push('h += q_s(t)·dt               t 用当前层时间；F4 用整程时间');
+push('八层检查点：50 轮  44556.35s  F[7,6,8,4,9,9,8,9]  U[37,37,36,36]  WF=446103510  WS=88739910');
+push('终局三轮：1824.85s / 1629.85s / 1549.25s  越标线 否/是/是');
 push('```');
 push('');
-
-// ── 五、实测 ──
-const result = campaign();
-const seconds = result.runs.reduce((a, r) => a + r.time, 0);
-push('## 五、当前代码实测（与 数值设计.md §10.1 一致）');
-push('');
-push('```text');
-push(`失败次数：${JSON.stringify(result.failures)}`);
-push(`轮数：${result.runs.length}`);
-push(`最终失败等级：${JSON.stringify(result.permanent.failure)}`);
-push(`最终成功等级：${JSON.stringify(result.permanent.success)}`);
-push(`最终失败余额：${result.permanent.failureWallet}`);
-push(`最终成功余额：${result.permanent.successWallet}`);
-push(`累计游戏时间：${seconds.toFixed(2)} 秒，约 ${(seconds / 3600).toFixed(2)} 小时`);
-push('```');
-push('');
-const failed = result.runs.filter((r) => r.failedLayer);
-push(`每次覆灭时长：${Math.min(...failed.map((r) => r.time)).toFixed(2)} ～ ${Math.max(...failed.map((r) => r.time)).toFixed(2)} 秒。`);
-push('');
-push('> 若这张表和 `数值设计.md` §10 对不上，说明代码被改动了 —— 跑 `node tools/v5-verify.mjs` 定位。');
+push('> 若这张表和 `数值设计.md` §12 对不上，说明代码被改动了 —— 跑 `node tools/v8-verify.mjs` 定位。');
 
 fs.writeFileSync('docs/16-数值表.md', `${lines.join('\n')}\n`, 'utf8');
-console.log(`已写入 docs/16-数值表.md（${lines.length} 行）`);
+console.log(`[gen-balance-doc] docs/16-数值表.md 已生成（${lines.length} 行）`);

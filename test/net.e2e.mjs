@@ -1,4 +1,4 @@
-// test/net.e2e.mjs — 服务器存档 / 用户名 / 排行榜 端到端
+﻿// test/net.e2e.mjs — 服务器存档 / 用户名 / 排行榜 端到端
 // 用法：node test/net.e2e.mjs    （需要 node server.mjs 8080 在跑）
 import { chromium } from 'playwright';
 
@@ -31,9 +31,9 @@ ok(me1.hasSave === false, '新玩家还没有服务器存档');
 console.log('\n[2] 同步存档 + 上报成绩');
 // 跳过开场剧情
 for (let i = 0; i < 8; i++) { if (await page.isVisible('.l-story').catch(() => false)) { await page.click('.l-story'); await page.waitForTimeout(100); } }
-await page.evaluate(() => window.__dny.give({ mtc: '1e30', mp: '50', pp: '80', ap: '10' }));
+await page.evaluate(() => { window.__dny.clearStory(); window.__dny.tick(4000); });
 await page.waitForTimeout(200);
-await page.evaluate(() => window.__dny.act('syncNow'));
+await page.evaluate(() => window.__dny.sync(true));
 await page.waitForTimeout(900);
 
 const saved = await (await ctx.request.get(`${BASE}/api/save`)).json();
@@ -79,7 +79,7 @@ ok(text.includes(newName), '排行榜显示改后的用户名');
 console.log('\n[6] 刷新页面：从服务器恢复存档');
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
-const restored = await page.evaluate(() => window.__dny.engine().s.mtc.toString());
+const restored = await page.evaluate(() => String(window.__dny.engine.state.seg ? window.__dny.engine.state.seg.wallet : 0));
 ok(restored !== '0e0', `刷新后从服务器读回进度（mtc=${restored}）`);
 
 await page.screenshot({ path: 'test/screens/95-leaderboard.png' });

@@ -1,22 +1,22 @@
 {
   "name": "dny",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "龙与耶维城 — 多层重置增量放置游戏（档 0–3 可玩版；数值 = docs/数值设计.md V5）",
+  "description": "龙与耶维城 — 八层 + 终局的重置式增量放置游戏（数值 = docs/数值设计.md V8）",
   "scripts": {
     "start": "node server.mjs 8080",
-    "verify": "node tools/v5-verify.mjs && node tools/v5-engine-verify.mjs && node tools/v5-audit.mjs && node tools/v5-save-verify.mjs",
+    "verify": "node tools/v8-verify.mjs && node tools/v8-engine-verify.mjs && node tools/v8-audit.mjs && node tools/v8-save-verify.mjs",
+    "verify:four": "node tools/v8-verify.mjs --four",
+    "ref": "node tools/extract-reference.mjs",
     "sim": "node sim/run.mjs",
     "sim:full": "node sim/simulate.mjs",
     "probe": "node sim/probe.mjs 300",
     "doc:balance": "node tools/gen-balance-doc.mjs",
-    "test:ui": "node test/ui.e2e.mjs",
-    "test:story": "node test/story.e2e.mjs",
-    "test:play": "node test/play.e2e.mjs"
+    "test:e2e": "node test/v8.e2e.mjs",
+    "test:net": "node test/net.e2e.mjs"
   },
   "dependencies": {
-    "vis-network": "^9.1.9",
     "vue": "^2.6.14"
   },
   "devDependencies": {

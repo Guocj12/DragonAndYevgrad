@@ -204,8 +204,10 @@ async function handleApi(req, res, urlPath, query) {
     const body = await readBody(req);
     const m = body.metrics || {};
     player.metrics = {
-      tier: NET_METRIC(m.tier, 3),
-      purified: Math.max(-1, Math.min(300000, Number(m.purified) || 0)),
+      // V8：tier 0..8（8 = 已进入终局）；purified 是真实力量的 log10，最大到 2.49e9
+      tier: NET_METRIC(m.tier, 8),
+      purified: Math.max(-1, Math.min(1e10, Number(m.purified) || 0)),
+      purifiedExponent: Math.max(-1, Math.min(1e10, Number(m.purifiedExponent) || 0)),
       cycles: NET_METRIC(m.cycles, 1e9),
       guards: NET_METRIC(m.guards, 1e9),
       playTime: NET_METRIC(m.playTime, 1e9),
@@ -225,6 +227,7 @@ async function handleApi(req, res, urlPath, query) {
         name: p.name,
         tier: p.metrics.tier,
         purified: p.metrics.purified,
+        purifiedExponent: p.metrics.purifiedExponent,
         cycles: p.metrics.cycles,
         guards: p.metrics.guards,
         playTime: p.metrics.playTime,
