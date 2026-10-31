@@ -340,12 +340,12 @@ export class Engine {
     const level = this.s.autoBuyLv[charId] || 0;
     let effect;
     if (level <= 0) effect = '不自动购买（全靠手动）';
-    else if (level <= 8) effect = `每 1 秒自动购买一次第 ${level} 项`;
+    else if (level <= 8) effect = `每 1 秒自动购买一次：第 1..${level} 项各 1 级`;
     else if (level < AUTO_MAX_LEVEL) {
       const iv = autoTechInterval(level);
       const ivText = iv >= 0.1 ? Number(iv.toFixed(2)) : Number(iv.toFixed(3));
       effect = `每 ${ivText} 秒自动购买一次「本层最便宜的一项」（≈ ${(1 / iv).toFixed(2)} 次/秒）`;
-    } else effect = '每 0.05 秒购买所有可买项';
+    } else effect = '每 0.05 秒把本角色 8 项买到买不起';
     return {
       charId, stage, level, maxLevel: AUTO_MAX_LEVEL,
       nextCost: level >= AUTO_MAX_LEVEL ? 0 : autoTechCost(stage, level),
@@ -363,28 +363,38 @@ export class Engine {
     return true;
   }
 
-  /** 每 tick 第 2 步：按当前层角色的科技等级买 */
+  /** 每 tick 第 2 步：按当前层角色的科技等级买（只动当前层角色的 8 项） */
   autoBuyStep(seg) {
     const s = this.s;
     const dt = CONFIG.dt;
     const id = this.charOf(seg.stage);
     const lv = s.autoBuyLv[id] || 0;
     if (lv <= 0) return 0;
-    if (lv >= AUTO_MAX_LEVEL) return seg.defaultBuy();   // 与数值基准完全一致
+    const owner = Math.min(seg.stage, 8);
+    // 满级：数值基准（headless）必须与文档 §14 的「全项买满」逐字一致；
+    // 实际游戏里只买当前角色自己的 8 项，不去动其他角色/旧层的项。
+    if (lv >= AUTO_MAX_LEVEL) {
+      return this.headless ? seg.defaultBuy() : seg.buyOwnerLoop(owner);
+    }
     const interval = autoTechInterval(lv);
     s.autoTimer[id] = (s.autoTimer[id] || 0) + dt;
     if (s.autoTimer[id] + 1e-12 < interval) return 0;
     s.autoTimer[id] -= interval;
     if (s.autoTimer[id] < 0) s.autoTimer[id] = 0;
-    const stage = seg.stage;
     if (lv <= 8) {
-      const index = (stage - 1) * 8 + (lv - 1);
-      if (seg.items[index] && seg.unlocked[index] && seg.wallet >= seg.prices[index]) {
-        return seg.buyItem(index);
+      // 1–8 级：依次把第 1..N 项纳入自动购买（每项每次各买 1 级，能买就买）
+      let bought = 0;
+      const from = (owner - 1) * 8;
+      for (let k = 0; k < lv; k++) {
+        const index = from + k;
+        if (seg.items[index] && seg.unlocked[index] && seg.wallet >= seg.prices[index]) {
+          bought += seg.buyItem(index);
+        }
       }
-      return 0;
+      return bought;
     }
-    return seg.buyCheapestForOwner(Math.min(stage, 8));
+    // 9–21 级：每次买「本角色最便宜的一项」一级
+    return seg.buyCheapestForOwner(owner);
   }
 
   /** 片段结束：结算 → 换层 / 终局 / 回第一层（§11.2） */
@@ -502,8 +512,9 @@ export class Engine {
     return n > 0;
   }
 
+  /** 一键买满：只把当前层角色的 8 项买到买不起，不影响其他角色 */
   buyMaxOnce() {
-    const n = this.seg.defaultBuy();
+    const n = this.seg.buyOwnerLoop(Math.min(this.s.stage, 8));
     if (n) this.seg.lastEffects = null;
     return n;
   }
@@ -911,7 +922,8 @@ export class Engine {
   /**
    * 直接进入某一层「首次抵达」时的存档：整份状态换成 src/debug.js 里
    * tools/gen-debug-jumps.mjs 从全流程模拟（数值文档 §12 检查点）抓出的入口快照。
-   * 与真实到达的差异只有一处：本层自动购买科技置满级 22（数值口径 = 每 tick 买满）。
+   * 自动购买科技一律保持 0 级（不自动买临时升级项，与正常开局一致，全部手动）；
+   * 永久等级与钱包仍取检查点数字。
    */
   debugJumpTo(stage) {
     const entry = DEBUG_ENTRIES[stage - 1];
@@ -932,7 +944,6 @@ export class Engine {
       firstCollapse: [...entry.stats.firstCollapse],
       cleared: { ...entry.stats.cleared },
     });
-    for (const id of CHARACTER_ORDER) s.autoBuyLv[id] = AUTO_MAX_LEVEL;
     s.storySeen = STORY.filter((e) => earlierLayerStory(e, entry.stage)).map((e) => e.id);
     s.settings = Object.assign({}, this.s.settings);
     this.s = s;

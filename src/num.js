@@ -86,11 +86,21 @@ export function formatRatio(x, digits = 2) {
   return String(Number(x.toFixed(digits)));
 }
 
-/** mtc 显示口径：内部 R × 10（尾数移位，不做 Number 乘法）；显示时再四舍五入成整数 */
-export function scaledMtc(v) {
+/** mtc 显示乘数（随档动态）：第 1 层 ×10 是既定口径（2.2 → 22 mtc）；
+ *  第 L ≥ 2 层 ×10^(L+1)，把各层开局的门票价 / 奶茶币收入抬回 2X 的整数
+ *  （各层首价内部值约 0.024 × 0.1^(L-2)，否则会显示成 0.00 几）。只改显示，不改任何计算。 */
+export function mtcFactorOf(layer) {
+  const l = Math.max(1, Math.min(9, Math.floor(Number(layer) || 1)));
+  return l <= 1 ? 10 : 10 ** (l + 1);
+}
+
+/** mtc 显示口径：内部 R × 当前档乘数（尾数移位，不做 Number 乘法，八层的量级会溢出）；
+ *  显示侧再四舍五入成整数（formatPrice / formatInteger） */
+export function scaledMtc(v, layer = 1) {
   const d = toSci(v);
   if (d.mantissa === 0) return new Scientific(0);
-  return new Scientific(d.mantissa * 10, d.exponent);
+  const f = mtcFactorOf(layer);
+  return new Scientific(d.mantissa * f, d.exponent);
 }
 
 export function formatTime(sec) {

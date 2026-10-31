@@ -1,8 +1,8 @@
-// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
+﻿// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
 //
 // 铁律：
 //   ① 本文件**不计算任何数值**。一切数字来自 src/engine.js 的视图模型；
-//   ② 数值只在引擎里算。手动买单项 / 「购买最大数量」都直接调用 src/v8.js 里同一段购买记账；
+//   ② 数值只在引擎里算。手动买单项 / 「一键买满」（只买当前角色 8 项）都走 src/v8.js 里同一段购买记账；
 //   ③ 主循环只用 requestAnimationFrame 累加真实时间，每 0.05 秒调一次 engine.tick()（§11.1）；
 //   ④ 存档只走 engine.save() / Engine.load()，版本不符直接拒绝（§11.3 不静默迁移）。
 //
@@ -31,9 +31,12 @@ const fmtRatio = (v) => formatRatio(v);
 const money = (v) => formatInteger(v);               // 钱包 / 整数
 const count = (n) => (Number.isSafeInteger(n) && Math.abs(n) < 1e15
   ? n.toLocaleString('en-US') : formatInteger(n));   // 等级（可能上亿）
-// mtc 统一 ×1000 显示：尾数移位，不做 Number 乘法（八层的量级会溢出）
-const mtcText = (v) => formatInteger(scaledMtc(v));
-const mtcCost = (v) => formatPrice(scaledMtc(v));
+// mtc 显示：随档乘数（num.js mtcFactorOf）——第 1 层 ×10，第 L 层 ×10^(L+1)；
+// 尾数移位，不做 Number 乘法（八层的量级会溢出）。统一走 formatPrice：
+// 四舍五入成整数、非 0 至少显示 1（0.00 几的开局收入/价格不再出现）。
+const mtcLayer = () => Math.min(engine.s.stage, 8);
+const mtcText = (v) => formatPrice(scaledMtc(v, mtcLayer()));
+const mtcCost = (v) => formatPrice(scaledMtc(v, mtcLayer()));
 
 // ───────────────────────────── 服务器身份与存档 ─────────────────────────────
 const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };
@@ -435,7 +438,7 @@ function statsVM() {
   const resource = [
     ['奶茶币转化率', fmtRatio(b.conversion)],
     ['攻击回收率', fmtRatio(b.salvage)],
-    ['奶茶币收入（奶茶币/秒）', fmtDisplaySmall(v.income)],
+    ['奶茶币收入（奶茶币/秒）', mtcText(v.income)],
   ];
   const totals = v.totals.map((x, i) => [totalsLabel(i), fmtDisplaySmall(x)]);
   const ledger = engine.state.ledger.slice(-20).reverse().map((e, i) => ({
@@ -509,7 +512,7 @@ function buildVM() {
       production: fmtDisplaySmall(b.production),
       hit: fmtDisplaySmall(b.hit),
       frequency: fmtRatio(b.frequency),
-      income: fmtDisplaySmall(v.income),
+      income: mtcText(v.income),
       showAttack: engine.s.stage >= 3,
       isCurrent: charStage(tab) === Math.min(stage, 8),
       stage: charStage(tab),
@@ -709,7 +712,7 @@ function act(action, payload) {
         text: `层号 ${stage - 1}（${TIER_NAMES[stage - 1]}${stage === 9 ? ' · 终局' : ''}）首次抵达时的检查点：`
           + `第 ${info ? info.run : '?'} 轮 · 记忆点数 ${info ? money(info.mp) : '?'} / 守护点数 ${info ? money(info.pp) : '?'}`
           + `（docs/数值设计.md §12，由 tools/gen-debug-jumps.mjs 生成）。`
-          + `本层自动购买科技会置满级（22）。当前进度会被覆盖——需要保留请先「导出存档」。确定进入？`,
+          + `自动购买科技保持 0 级（临时升级全部手动买）。当前进度会被覆盖——需要保留请先「导出存档」。确定进入？`,
         textarea: null, actions: ['debugJump', 'close'], payload: stage,
       };
       break;
@@ -912,7 +915,7 @@ const app = new Vue({
           <template v-if="vm.sub === 'upgrades'">
             <div class="l-section-title l-section-title--buy">
               <span>升级</span>
-              <span class="c-hint">手动购买单项；「一键买满」按最便宜优先购买</span>
+              <span class="c-hint">手动购买单项；「一键买满」= 只把本角色 8 项买到买不起（不碰其他角色）</span>
               <button class="o-primary-btn c-buy-max" @click="act('buyMax')">一键买满</button>
             </div>
             <div v-if="!vm.body.items.live" class="c-dim-note c-page-note">{{ vm.body.items.note }}</div>
@@ -1178,7 +1181,7 @@ const app = new Vue({
           <div class="c-dim-note c-page-note">
             点「层号 · 层名」直接进入<b>首次抵达该层</b>时的存档：永久升级与记忆/守护点数按
             <code>docs/数值设计.md</code> §12 八层检查点（<code>node tools/gen-debug-jumps.mjs</code> 从全流程模拟生成），
-            本层自动购买科技置满级 22（数值口径 = 每 0.05 秒买满）。跳层会覆盖当前进度，需要保留请先导出存档；
+            自动购买科技保持 0 级（临时升级全部手动买）。跳层会覆盖当前进度，需要保留请先导出存档；
             到达后当前层的初见剧情照常播放。
           </div>
           <div class="c-dim-note c-page-note">

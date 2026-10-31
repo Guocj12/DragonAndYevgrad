@@ -264,8 +264,62 @@ const eight = campaign({});
 
   assert.equal(cCost(0), 2); assert.equal(cCost(6), 2); assert.equal(cCost(7), 4);
   assert.equal(cCost(12), 128); assert.equal(cCost(13), null, ok('中枢价格：前 7 级 2 PP，之后每级 ×2'));
-  assert.equal(iv(0), Infinity); assert.equal(iv(7), 1); assert.equal(iv(8), 0.8);
-  assert.equal(iv(13), 0.05, ok('中枢间隔：1 秒 → 每级 ×0.8 → 满级 0.05 秒'));
+  const { AUTO_INTERVAL_STEP: TECH_STEP } = await import('../src/db.js');
+  assert.equal(iv(0), Infinity); assert.equal(iv(7), 1);
+  assert.equal(iv(8), TECH_STEP, ok('中枢 7 级后的缩短乘数与「科技」自动购买同一个常量'));
+  assert.equal(iv(13), 0.05, ok('中枢间隔：1 秒 → 每级 ×0.7943 → 满级 0.05 秒'));
+
+  // 自动购买科技 1–8 级：逐级把第 1..N 项纳入自动购买（累积，不是切换）
+  {
+    const mkSeg = (engine, stage = 1) => {
+      engine.s.stage = stage;
+      const seg = engine.makeSegment(stage, 0);
+      seg.unlocked.fill(true);
+      seg.wallet = 1e30;          // 一层第 7/8 项价格到 1e14 / 1e20，钱包给够才能全买
+      engine.seg = seg;
+      return seg;
+    };
+    const runOne = (engine, seg) => {
+      // 1 秒（20 tick）触发一次
+      let bought = 0;
+      for (let i = 0; i < 20; i++) bought += engine.autoBuyStep(seg);
+      return bought;
+    };
+    const e1 = new Eng(init()); e1.headless = true;
+    const s1 = mkSeg(e1); e1.s.autoBuyLv['249'] = 1;
+    runOne(e1, s1);
+    const lv1 = s1.levels.slice(0, 8);
+    assert.equal(lv1.filter((v) => v > 0).length, 1, ok('自动购买 Lv1：只有第 1 项被自动买'));
+
+    const e3 = new Eng(init()); e3.headless = true;
+    const s3 = mkSeg(e3); e3.s.autoBuyLv['249'] = 3;
+    runOne(e3, s3);
+    const lv3 = s3.levels.slice(0, 8);
+    assert.equal(lv3.filter((v) => v > 0).length, 3, ok('自动购买 Lv3：前 3 项同时被自动买'));
+
+    const e8 = new Eng(init()); e8.headless = true;
+    const s8 = mkSeg(e8); e8.s.autoBuyLv['249'] = 8;
+    runOne(e8, s8);
+    const lv8 = s8.levels.slice(0, 8);
+    assert.equal(lv8.filter((v) => v > 0).length, 8, ok('自动购买 Lv8：八项全部纳入'));
+
+    // 只动本角色：在第 8 层（64 项）验证 1–8 级与满级都不碰别人的项
+    const eS = new Eng(init()); eS.headless = false;
+    const sS = mkSeg(eS, 8);
+    eS.s.autoBuyLv['xyt'] = 8;
+    runOne(eS, sS);
+    const owner8 = sS.levels.slice(56, 64);
+    assert(owner8.filter((v) => v > 0).length >= 1, ok('第 8 层 Lv8：本角色项被自动买'));
+    assert(sS.levels.slice(0, 56).every((v) => v === 0), ok('第 8 层 Lv8：其他 7 层共 56 项完全不动'));
+
+    // 满级（22）：实际游戏只买本角色 8 项，headless 基准仍走全项（文档口径）
+    const e22 = new Eng(init()); e22.headless = false;
+    const s22 = mkSeg(e22, 8);
+    e22.s.autoBuyLv['xyt'] = 22;
+    e22.autoBuyStep(s22);
+    assert(s22.levels.slice(56, 64).some((v) => v > 0), ok('满级：本角色 8 项被买到买不起'));
+    assert(s22.levels.slice(0, 56).every((v) => v === 0), ok('满级：不替其他所属层花钱'));
+  }
 
   // 结算自动购买：默认关（实际游戏），科技树 Lv1 解锁后才自动买
   {

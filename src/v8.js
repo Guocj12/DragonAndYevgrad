@@ -1,4 +1,4 @@
-// src/v8.js — 数值核（V8：八层 + 终局）
+﻿// src/v8.js — 数值核（V8：八层 + 终局）
 //
 // 唯一权威：docs/数值设计.md（V8，2026-10-29）§1–§14。
 // 本文件是 §14「完整独立模拟器」的**逐字移植**：同一个 CONFIG、同一个 Scientific、
@@ -525,6 +525,30 @@ export class Segment {
     return 1;
   }
 
+  /**
+   * 只把**某一个所属层**的 8 项买到买不起（「一键买满」/ 满级自动购买用）。
+   * 记账与逐级购买完全同源；不碰其他所属层的项。
+   */
+  buyOwnerLoop(owner) {
+    let count = 0;
+    const from = (owner - 1) * 8, to = owner * 8;
+    for (;;) {
+      let best = -1;
+      for (let i = from; i < to && i < this.items.length; i++) {
+        if (!this.unlocked[i]) continue;
+        if (best === -1 || this.prices[i] < this.prices[best]) best = i;
+      }
+      if (best === -1 || !(this.prices[best] <= this.wallet)) break;
+      this.wallet -= this.prices[best];
+      this.levels[best]++;
+      this.totals[(this.items[best].owner - 1) * 2 + this.items[best].kind] += 1 / this.items[best].density;
+      this.prices[best] = this.items[best].firstPrice * Math.exp(this.items[best].step * this.levels[best]);
+      this.purchases++;
+      count++;
+      if (count > GUARDS.sequentialBuys) throw new Error('Owner purchase runaway');
+    }
+    return count;
+  }
   // 该所属层 8 项里最便宜的一级（自动购买科技 9–21 级用）
   buyCheapestForOwner(owner) {
     let best = -1;

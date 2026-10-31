@@ -8,12 +8,12 @@
 //   ② 八层页签都能打开；每角色「升级 / 科技」，只有 249 多一个「科技树」
 //   ③ 升级页只显示该角色 8 项；科技页两张卡（自动购买 + 专属永久升级）
 //   ④ 科技树：85 节点（1 中枢 + 4 主干 + 8 叶子 + 8×9 角色节点），主干是四项成功科技
-//   ⑤ mtc 口径 ×10（249 第一个升级 = 22 奶茶币）
+//   ⑤ mtc 口径随档乘数（第 1 层 ×10：249 第一个升级 = 22 奶茶币；第 L 层 ×10^(L+1)）
 //   ⑥ 截图：每角色 × 升级 / 科技，249 科技树（含初始与八角色全解锁），外加通用页
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
-import { formatDisplay, formatInteger, scaledMtc } from '../src/num.js';
+import { formatDisplay, formatPrice, scaledMtc } from '../src/num.js';
 import { ITEM_NAMES } from '../src/db.js';
 import { TREE_NODE_TOTAL } from '../src/tree.js';
 
@@ -81,7 +81,7 @@ for (const [stage, id] of CHARS) {
   const mtcValue = await headerValue(2);
   ok(powerText === formatDisplay(v.force), `HUD 净化力 == 引擎值（${powerText}）`);
   ok(pressureText === formatDisplay(v.pressureForce), `HUD 深渊 == 引擎值（${pressureText}）`);
-  ok(mtcValue === formatInteger(scaledMtc(v.wallet)), `HUD mtc == 引擎值（${mtcValue}）`);
+  ok(mtcValue === formatPrice(scaledMtc(v.wallet, Math.min(v.stage, 8))), `HUD mtc == 引擎值（${mtcValue}）`);
   ok(!/NaN|undefined|Infinity/.test(`${powerText}${pressureText}${mtcValue}`), 'HUD 无 NaN/Infinity');
 
   const subNames = await page.locator('.c-subtab-button-container .o-tab-btn').allInnerTexts();
@@ -101,6 +101,30 @@ for (const [stage, id] of CHARS) {
   const techs = await page.locator('.c-upgrade-btn--tech').count();
   ok(techs === 2, `科技页卡片数 ${techs} == 2（自动购买 + 专属永久升级）`);
   await page.screenshot({ path: path.join(shotDir, `stage${stage}-${id}-techs.png`), fullPage: true });
+}
+
+// ── 一键买满：只动当前角色 8 项 ──
+{
+  await page.evaluate(() => {
+    const e = window.__dny.engine;
+    window.__dny.scene(8, 0, { demo: 16 });
+    e.headless = false;
+    e.seg.wallet = 1e30;
+    e.seg.unlocked.fill(true);
+    window.__dny.view();
+  });
+  await page.waitForTimeout(150);
+  await page.locator('.l-tab-bar .o-tab-btn', { hasText: 'XyT' }).first().click();
+  await page.waitForTimeout(120);
+  await clickSub('升级');
+  const before = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
+  await page.locator('.c-buy-max').click();
+  await page.waitForTimeout(200);
+  const after = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
+  const changed = [];
+  for (let i = 0; i < after.length; i++) if (after[i] !== before[i]) changed.push(i);
+  ok(changed.length > 0 && changed.every((i) => i >= 56 && i < 64),
+    `一键买满只改动本角色（第 8 层 56..63），实际改动 ${changed.length} 项`);
 }
 
 // ── 实际游戏口径（headless=false）：科技页给手动按钮，未解锁时提示去科技树 ──

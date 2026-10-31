@@ -1,4 +1,4 @@
-// src/tree.js — 科技树数据（外壳）：布局沿用 586164c 的 vis-network 版本
+﻿// src/tree.js — 科技树数据（外壳）：布局沿用 586164c 的 vis-network 版本
 //   中心 r0   = 自动化中枢（本版复活：13 级，PP 购买，前 7 级各 2 PP，之后每级 ×2）
 //   主干 r1   = 四个斜角节点，**换成现有的四项成功科技**（净化效率 / 伤害效率 / MP 倍率 / PP 倍率）
 //   叶子 r2   = 八个方向各一个，保留旧节点名，效果为空、价格 0（测试不买）
@@ -7,7 +7,7 @@
 // 数值口径：主干节点的等级就是 permanent.success[0..3]，不另存一份，避免两套等级漂移。
 // 中心节点的等级存在 engine.state.tree.center。
 
-import { SUCCESS_NAMES } from './db.js';
+import { SUCCESS_NAMES, AUTO_INTERVAL_STEP as AUTOBUY_STEP } from './db.js';
 
 // ── 中心：自动化中枢 ──
 export const TREE_CENTER = {
@@ -44,13 +44,14 @@ export function centerCost(level) {
 /**
  * 中心驱动的自动购买间隔（秒）：
  *   0 级 = 不自动；1–7 级 = 每秒一次；
- *   8–12 级 = 每级 ×0.8；13 级满级 = 0.05 秒（每秒 20 次，和「科技」里的自动购买满级一致）。
+ *   8–12 级 = 每级 ×0.7943（与「科技」里的自动购买同一个乘数）；13 级满级 = 0.05 秒（每秒 20 次）。
  */
 export function treeInterval(level) {
   if (level <= 0) return Infinity;
   if (level <= 7) return 1;
   if (level >= TREE_CENTER.maxLevel) return 0.05;
-  return 0.8 ** (level - 7);
+  // 7 级之后的缩短乘数与「科技」里的自动购买同一个常量（0.05**(1/13) ≈ 0.7943）
+  return AUTOBUY_STEP ** (level - 7);
 }
 
 // ── 主干：四个成功科技（顺序按用户口径：净化效率 → 伤害效率 → MP 倍率 → PP 倍率）──
