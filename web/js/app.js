@@ -327,22 +327,32 @@ function itemsVM(charId) {
   const all = engine.items();
   const list = all.filter((it) => it.owner === owner);
   const nextIdx = list.findIndex((it) => !it.unlocked);
-  const toCard = (it) => ({
-    index: it.index,
-    id: it.id,
-    name: it.name,
-    kind: it.kind,
-    owner: it.owner,
-    level: count(it.level),
-    unlocked: !!it.unlocked,
-    price: mtcCost(it.price),
-    affordable: !!it.affordable,
-    effect: it.level > 0 ? engine.itemEffect(it) : engine.itemMechanism(it),
-    effectNext: it.unlocked && it.level > 0
-      ? engine.itemEffectAt(it, it.effective + 1 / it.density) : null,
-    mechanism: engine.itemMechanism(it),
-    unlockText: engine.itemUnlockText(it),
-  });
+  const toCard = (it) => {
+    const effect = it.level > 0 ? engine.itemEffect(it) : engine.itemMechanism(it);
+    let effectNextShort = null;
+    if (it.unlocked && it.level > 0) {
+      const next = engine.itemEffectAt(it, it.effective + 1 / it.density);
+      if (next !== effect) {
+        const term = /^[^×+]*/.exec(effect)[0];
+        effectNextShort = term && next.startsWith(term) ? next.slice(term.length) : next;
+      }
+    }
+    return {
+      index: it.index,
+      id: it.id,
+      name: it.name,
+      kind: it.kind,
+      owner: it.owner,
+      level: count(it.level),
+      unlocked: !!it.unlocked,
+      price: mtcCost(it.price),
+      affordable: !!it.affordable,
+      effect,
+      effectNextShort,
+      mechanism: engine.itemMechanism(it),
+      unlockText: engine.itemUnlockText(it),
+    };
+  };
   const cards = list.map(toCard);
   const unlocked = cards.filter((c) => c.unlocked);
   const nextCard = nextIdx >= 0 ? cards[nextIdx] : null;
@@ -852,28 +862,22 @@ const app = new Vue({
         </div>
         <div class="c-abyss-info">
           <span>目标 {{ vm.hud.target }}</span>
-          <span>本层 {{ vm.hud.stageTime }}</span>
-          <span>第 {{ vm.hud.runIndex }} 轮</span>
           <span :class="{ 'c-paused-tag': vm.hud.danger }">{{ vm.hud.pressureRatioText }}</span>
-          <span v-if="vm.hud.paused" class="c-paused-tag">已暂停</span>
         </div>
         <div v-if="vm.saveIssue" class="c-save-issue">{{ vm.saveIssue }}</div>
       </div>
 
-      <!-- ── 机制面板（六层起）── -->
+      <!-- ── 机制状态（六层起）── -->
       <div class="c-mech-row" v-if="vm.mech.showEnergy">
-        <span class="c-tag c-tag--mech">{{ vm.hud.mechanic }}</span>
-        <span>蓄能 <b>{{ vm.mech.energy }}</b></span>
-        <span>余能 <b>{{ vm.mech.residual }}</b></span>
-        <span>释放次数 <b>{{ vm.mech.releases }}</b></span>
+        <span>蓄能 {{ vm.mech.energy }}</span>
+        <span>余能 {{ vm.mech.residual }}</span>
         <template v-if="vm.mech.showBuffer">
-          <span>缓冲 <b>{{ vm.mech.buffer }}</b></span>
-          <span>应急 <b>{{ vm.mech.emergency }}</b></span>
-          <span>救场次数 <b>{{ vm.mech.savedTicks }}</b></span>
+          <span>缓冲 {{ vm.mech.buffer }}</span>
+          <span>应急 {{ vm.mech.emergency }}</span>
         </template>
         <template v-if="vm.mech.showErosion">
-          <span>侵蚀 <b>{{ vm.mech.erosion }}</b></span>
-          <span>疲劳 <b>{{ vm.mech.fatigue }}</b></span>
+          <span>侵蚀 {{ vm.mech.erosion }}</span>
+          <span>疲劳 {{ vm.mech.fatigue }}</span>
         </template>
       </div>
 
@@ -890,7 +894,6 @@ const app = new Vue({
         <button v-for="st in subTabs" :key="st.id"
           class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.sub === st.id }"
           @click="act('sub', st.id)">{{ st.name }}</button>
-        <span class="c-hint">升级页手动买单项；科技页升级自动购买</span>
       </div>
 
       <div class="l-old-ui__page l-tab-page">
@@ -898,7 +901,7 @@ const app = new Vue({
         <template v-if="vm.kind === 'char'">
           <div class="l-section-title">
             {{ vm.body.charInfo.name }} · {{ vm.body.charInfo.title }}
-            <span class="c-hint">{{ vm.body.charInfo.stageName }}（第 {{ vm.body.charInfo.stage }} 层）· {{ vm.body.charInfo.mechanic }}</span>
+            <span class="c-hint">{{ vm.body.charInfo.mechanic }}</span>
           </div>
           <div class="c-char-stat">
             <span class="c-char-stat__label">产量</span>
@@ -914,11 +917,10 @@ const app = new Vue({
           </div>
           <div v-if="vm.body.charInfo.blurb" class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
 
-          <!-- 升级：左右两栏 -->
+          <!-- 升级：左右两栏，每项一行 -->
           <template v-if="vm.sub === 'upgrades'">
             <div class="l-section-title l-section-title--buy">
               <span>升级</span>
-              <span class="c-hint">手动购买单项；「一键买满」= 把**当前这个角色**的 8 项买到买不起（不碰其他角色）</span>
               <button class="o-primary-btn c-buy-max" @click="act('buyMax', vm.tab)">一键买满（{{ vm.body.charInfo.name }}）</button>
             </div>
             <div v-if="!vm.body.items.live" class="c-dim-note c-page-note">{{ vm.body.items.note }}</div>
@@ -926,27 +928,28 @@ const app = new Vue({
               <div v-for="col in vm.body.items.cols" :key="col.kind" class="l-upgrade-col">
                 <div class="c-upgrade-col__head">
                   <span class="c-upgrade-col__title">{{ col.title }}</span>
-                  <span class="c-hint">{{ col.cards.length }} 项</span>
                 </div>
                 <div v-for="c in col.cards" :key="c.id" class="c-upgrade-card">
-                  <div class="c-upgrade-card__head">
-                    <span class="c-upgrade-card__name">{{ c.name }}</span>
-                    <span class="c-upgrade-card__level">Lv {{ c.level }}</span>
+                  <div class="c-upgrade-card__info">
+                    <div class="c-upgrade-card__head">
+                      <span class="c-upgrade-card__name">{{ c.name }}</span>
+                      <span class="c-upgrade-card__level">Lv {{ c.level }}</span>
+                    </div>
+                    <div class="c-upgrade-card__effect">{{ c.effect }}<span v-if="c.effectNextShort" class="c-upgrade-card__next">→ {{ c.effectNextShort }}</span></div>
                   </div>
-                  <div class="c-upgrade-card__effect">{{ c.effect }}</div>
                   <button class="c-buy-btn" :class="c.affordable ? 'is-affordable' : 'is-poor'"
-                    @click="act('buyItem', c.index)">
-                    <span class="c-buy-btn__label">{{ c.effectNext ? '升级 → ' + c.effectNext : '升级' }}</span>
+                    title="买一级" @click="act('buyItem', c.index)">
                     <span class="c-buy-btn__price">{{ c.price }} 奶茶币</span>
                   </button>
                 </div>
                 <div v-if="col.next" class="c-upgrade-card c-upgrade-card--locked">
-                  <div class="c-upgrade-card__head">
-                    <span class="c-upgrade-card__name">{{ col.next.name }}</span>
-                    <span class="c-tag c-tag--lock">待解锁</span>
+                  <div class="c-upgrade-card__info">
+                    <div class="c-upgrade-card__head">
+                      <span class="c-upgrade-card__name">{{ col.next.name }}</span>
+                    </div>
+                    <div class="c-upgrade-card__effect">{{ col.next.mechanism }}</div>
+                    <div class="c-upgrade-card__lock">{{ col.next.unlockText }}</div>
                   </div>
-                  <div class="c-upgrade-card__effect">{{ col.next.mechanism }}</div>
-                  <div class="c-upgrade-card__lock">{{ col.next.unlockText }}</div>
                 </div>
                 <div v-if="!col.cards.length && !col.next" class="c-dim-note c-upgrade-col__empty">
                   这一栏还没有解锁的项
@@ -957,31 +960,31 @@ const app = new Vue({
 
           <!-- 科技：自动购买 + 该角色专属永久升级（记忆点数） -->
           <template v-else-if="vm.sub === 'techs'">
-            <div class="l-section-title">科技
-              <span class="c-hint">自动购买（0 级不自动，用记忆点数升级）· {{ vm.body.charInfo.name }} 的专属永久升级（可手动买；自动购买需科技树 Lv1）</span>
-            </div>
+            <div class="l-section-title">科技</div>
             <div class="l-upgrade-grid l-tech-grid">
               <div v-for="t in vm.body.techs" :key="t.id" class="c-upgrade-btn c-upgrade-btn--tech">
-                <div class="c-upgrade-btn__head">
-                  <span>{{ t.name }}</span>
-                  <span class="c-upgrade-btn__level">{{ t.levelText }}</span>
+                <div class="c-upgrade-btn__info">
+                  <div class="c-upgrade-btn__head">
+                    <span>{{ t.name }}</span>
+                    <span class="c-upgrade-btn__level">{{ t.levelText }}</span>
+                  </div>
+                  <div class="c-upgrade-btn__desc">{{ t.desc }}</div>
+                  <div class="c-upgrade-btn__preview">{{ t.note }}</div>
+                  <div v-if="!t.auto" class="c-upgrade-btn__cost">{{ t.costText }}</div>
                 </div>
-                <div class="c-upgrade-btn__desc">{{ t.desc }}</div>
-                <div class="c-upgrade-btn__preview">{{ t.note }}</div>
-                <div class="c-upgrade-btn__cost">{{ t.costText }}</div>
                 <button v-if="t.auto && !t.maxed" class="c-buy-btn"
                   :class="t.affordable ? 'is-affordable' : 'is-poor'"
-                  @click="act('buyAutoTech', vm.tab)">
+                  title="升一级" @click="act('buyAutoTech', vm.tab)">
                   <span class="c-buy-btn__label">升级</span>
                   <span class="c-buy-btn__price">{{ t.nextCost }} 记忆点数</span>
                 </button>
-                <div v-if="t.auto && t.maxed" class="c-dim-note">已满级</div>
                 <button v-if="!t.auto" class="c-buy-btn"
                   :class="t.affordable ? 'is-affordable' : 'is-poor'"
-                  @click="act('buyFailureTech', t.stage)">
+                  title="升一级" @click="act('buyFailureTech', t.stage)">
                   <span class="c-buy-btn__label">手动升级</span>
                   <span class="c-buy-btn__price">{{ t.nextCost }} 记忆点数</span>
                 </button>
+                <span v-if="t.auto && t.maxed" class="c-dim-note">已满级</span>
               </div>
             </div>
             <div class="c-wallet-row">
@@ -1014,7 +1017,7 @@ const app = new Vue({
         <!-- ═══ 永久科技（守护页） ═══ -->
         <template v-else-if="vm.kind === 'guard'">
           <div class="l-section-title">永久科技
-            <span class="c-hint">守护结算给守护点数、覆灭结算给记忆点数；结算后按最便宜优先自动购买，永不重置</span>
+            <span class="c-hint">结算后自动购买，永不重置</span>
           </div>
           <div class="c-wallet-row">
             <span class="c-wallet">记忆点数（覆灭结算获得）<b>{{ vm.body.guard.wallets.mp }}</b></span>
@@ -1050,7 +1053,6 @@ const app = new Vue({
         <template v-else-if="vm.kind === 'board'">
           <div class="l-section-title">
             排行榜
-            <span class="c-dim-note">按「层 → 真实力量 → 轮数」排序，每分钟自动上传</span>
             <button class="o-primary-btn c-board-refresh" @click="act('boardRefresh')">刷新</button>
           </div>
           <div v-if="vm.body.board.note" class="c-dim-note c-board-note">{{ vm.body.board.note }}</div>
@@ -1134,7 +1136,6 @@ const app = new Vue({
             <button class="o-primary-btn" @click="act('toggleSkipRead')">跳过已读剧情：{{ vm.skipReadStories ? '开' : '关' }}</button>
             <button class="o-primary-btn" @click="act('toggleAutoSettle', 'collapse')">自动覆灭结算：{{ vm.auto.collapse ? '开' : '关' }}</button>
             <button class="o-primary-btn" @click="act('toggleAutoSettle', 'guard')">自动守护结算：{{ vm.auto.guard ? '开' : '关' }}</button>
-            <span class="c-dim-note">自动结算默认关：覆灭/守护都会弹窗，点了才继续。</span>
           </div>
 
           <div class="l-section-title">玩家</div>
@@ -1142,7 +1143,6 @@ const app = new Vue({
             <span class="c-kv__k">用户名</span>
             <input id="name-input" class="o-input c-name-input" maxlength="16" :value="nameDraft || vm.body.net.name" placeholder="2–16 个字符" @input="nameDraft = $event.target.value" />
             <button class="o-primary-btn" @click="act('setName')">改名</button>
-            <span class="c-dim-note">这个名字会显示在排行榜上，存档按浏览器独立</span>
           </div>
           <div class="c-kv">
             <div><span class="c-kv__k">服务器</span> <span class="c-kv__v">{{ vm.body.net.online ? '已连接（存档每分钟上传）' : '离线（进度只存本地）' }}</span></div>
@@ -1161,36 +1161,20 @@ const app = new Vue({
             <button class="o-primary-btn" @click="act('resetOpen')">重新开始</button>
           </div>
           <div class="c-dim-note c-page-note">
-            每 10 秒自动保存到本地，每分钟同步到服务器；载入时优先本地、再试服务器。
+            每 10 秒自动保存到本地（版本 {{ version }}），每分钟同步到服务器；载入时优先本地、再试服务器。
             旧版本存档不会被迁移，需要重新开始。
           </div>
           <div v-if="vm.saveIssue" class="c-save-issue c-page-note">{{ vm.saveIssue }}</div>
 
-          <div class="l-section-title">状态</div>
-          <div class="c-kv">
-            <div><span class="c-kv__k">所在地</span> <span class="c-kv__v">{{ vm.hud.stageName }}（第 {{ vm.hud.stage }} 层{{ vm.hud.endgame ? ' · 终局' : '' }}）</span></div>
-            <div><span class="c-kv__k">本程时间</span> <span class="c-kv__v">{{ vm.hud.runTime }}</span></div>
-            <div><span class="c-kv__k">累计游玩</span> <span class="c-kv__v">{{ vm.body.playTimeText }}</span></div>
-            <div><span class="c-kv__k">自动保存</span> <span class="c-kv__v">每 10 秒</span></div>
-            <div><span class="c-kv__k">版本</span> <span class="c-kv__v">{{ version }}</span></div>
-          </div>
-
-          <div class="l-section-title">调试 <span class="c-hint">跳层入口 + 控制台 window.__dny（view / tick / save / metrics / scene），不能改数值</span></div>
+          <div class="l-section-title">调试 <span class="c-hint">跳层入口 + 控制台 window.__dny，不能改数值</span></div>
           <div class="l-options-row">
             <button v-for="d in vm.body.debugJumps" :key="'dj' + d.stage" class="o-primary-btn c-debug-jump"
               :class="{ 'c-debug-jump--current': d.current }" :title="d.title"
               @click="act('debugJumpOpen', d.stage)">{{ d.label }}</button>
           </div>
           <div class="c-dim-note c-page-note">
-            点「层号 · 层名」直接进入<b>首次抵达该层</b>时的存档：永久升级与记忆/守护点数按
-            <code>docs/数值设计.md</code> §12 八层检查点（<code>node tools/gen-debug-jumps.mjs</code> 从全流程模拟生成），
-            自动购买科技保持 0 级（临时升级全部手动买）。跳层会覆盖当前进度，需要保留请先导出存档；
-            到达后当前层的初见剧情照常播放。
-          </div>
-          <div class="c-dim-note c-page-note">
-            控制台可用 <code>__dny.tick(400)</code> 快进 400 步（每步 0.05 秒），
-            <code>__dny.view()</code> 读完整游戏状态，<code>__dny.scene(5, 600)</code> 跳到第五层跑 600 步（截图/验收用），
-            <code>__dny.jumpTo(4)</code> 等价于点上面的「4 · 奶盖星球」。
+            跳层会进入「首次抵达该层」的检查点存档（覆盖当前进度，需要保留请先导出存档）。
+            控制台：<code>__dny.tick(400)</code> 快进 400 步 · <code>__dny.view()</code> 读状态 · <code>__dny.jumpTo(4)</code> 等价点按钮。
           </div>
 
           <div class="l-section-title">玩法速记</div>

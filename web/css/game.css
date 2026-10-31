@@ -1177,3 +1177,88 @@ body {
 }
 .c-tree-host .vis-network { outline: none; }
 @media (max-width: 760px) { .c-tree-host { height: 460px; } }
+
+/* ═══════════════════════════════════════════════════════════════
+   极简壳：去掉装饰性边框 / 底色，次级信息弱化；结构与功能不变
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 顶部资源：纯文本，不套框 ── */
+.c-game-header { gap: 2.2rem; padding: 1.1rem 0 0.2rem; }
+.c-header-res { background: transparent; border: none; padding: 0; gap: 0.55rem; }
+.c-header-res__label { font-size: 1.3rem; opacity: 0.5; }
+.c-header-res__value { font-size: 2rem; }
+.c-header-tier { border: none; padding: 0.3rem 0; font-size: 1.4rem; opacity: 0.9; }
+
+/* ── 进度条：细一条 ── */
+.c-abyss-bar { height: 1.5rem; }
+.c-dual-bar__text { line-height: 1.5rem; font-size: 1.15rem; }
+.c-abyss-info { gap: 1.6rem; font-size: 1.2rem; margin-top: 0.25rem; opacity: 0.65; }
+
+/* ── 页签：纯文字，激活 = 高亮 + 下划线 ── */
+.l-tab-bar { gap: 0.2rem; margin-top: 0.5rem; }
+.o-tab-btn {
+  min-width: 0; padding: 0.35rem 1rem;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 0.2rem solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 1.4rem; opacity: 0.5;
+}
+.o-tab-btn:hover { opacity: 0.85; background: transparent !important; }
+.o-tab-btn--active { opacity: 1; border-bottom-color: var(--color-accent, #b241e3) !important; }
+
+/* ── 机制状态：一行小字 ── */
+.c-mech-row {
+  border: none; background: transparent; padding: 0.15rem 0; margin: 0.15rem auto 0;
+  justify-content: center; gap: 0.3rem 1.6rem; font-size: 1.15rem; opacity: 0.8;
+}
+
+/* ── 区块标题更轻 ── */
+.l-section-title { font-size: 1.45rem; margin: 1.1rem 0 0.4rem; }
+
+/* ── 升级：一行一项，细线分隔 ── */
+.l-upgrade-cols { margin-top: 0.4rem; gap: 3.2rem; }
+.c-upgrade-col__head { border-bottom: none; padding: 0.2rem 0.2rem 0.3rem; }
+.c-upgrade-col__title { font-size: 1.25rem; font-weight: normal; letter-spacing: 0.05em; opacity: 0.55; }
+.c-upgrade-card {
+  flex-direction: row; align-items: center; gap: 1.4rem;
+  background: transparent; border: none; border-radius: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0.5rem 0.2rem;
+}
+.c-upgrade-card--locked { border-bottom: 1px dashed rgba(255, 255, 255, 0.14); }
+.c-upgrade-card__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.c-upgrade-card__head { gap: 0.7rem; }
+.c-upgrade-card__name { font-size: 1.4rem; }
+.c-upgrade-card__level { font-size: 1.15rem; color: inherit; opacity: 0.5; }
+.c-upgrade-card__effect { font-size: 1.3rem; }
+.c-upgrade-card__next { opacity: 0.6; margin-left: 0.5rem; }
+.c-upgrade-card__lock { font-size: 1.2rem; }
+.c-buy-btn {
+  width: auto; flex: 0 0 auto; margin: 0; padding: 0.45rem 1.1rem;
+  justify-content: center; min-width: 12rem;
+}
+.c-buy-max { font-size: 1.25rem; padding: 0.2rem 1rem; }
+
+/* ── 科技：同样一行一项 ── */
+.l-tech-grid { display: flex; flex-direction: column; gap: 0; }
+.c-upgrade-btn {
+  flex-direction: row; align-items: center; gap: 1.4rem;
+  min-height: 0; background: transparent; border: none; border-radius: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 0.5rem 0.2rem;
+}
+.c-upgrade-btn__info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; text-align: left; }
+.c-upgrade-btn__head { gap: 0.7rem; font-size: 1.4rem; }
+.c-upgrade-btn__desc { font-size: 1.2rem; opacity: 0.6; }
+.c-upgrade-btn__preview { font-size: 1.2rem; opacity: 0.75; }
+.c-upgrade-btn__cost { font-size: 1.2rem; }
+
+/* ── 钱包：纯文本 ── */
+.c-wallet { border: none; padding: 0; }
+.c-wallet b { font-size: 1.5rem; }
+
+/* 页签文字颜色：AD 壳的激活态会把文字压暗，这里统一回可读色 */
+.o-tab-btn { color: var(--color-text) !important; }
+.o-tab-btn--active { color: var(--color-text) !important; }
