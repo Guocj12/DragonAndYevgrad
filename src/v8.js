@@ -1,4 +1,4 @@
-﻿// src/v8.js — 数值核（V8：八层 + 终局）
+// src/v8.js — 数值核（V8：八层 + 终局）
 //
 // 唯一权威：docs/数值设计.md（V8，2026-10-29）§1–§14。
 // 本文件是 §14「完整独立模拟器」的**逐字移植**：同一个 CONFIG、同一个 Scientific、
@@ -265,8 +265,10 @@ export function successReward(stage, permanent) {
 
 // ─────────────────────────────────────────────────────────────
 // §11.2 结算（唯一永久入口）
+//   options.buy === false：只发币、不自动购买（实际游戏里由科技树节点解锁后才自动买）。
+//   默认（不传 / true）就是文档行为，campaign 与参考模拟器都走这条路径，数值不变。
 // ─────────────────────────────────────────────────────────────
-export function settle(p, result) {
+export function settle(p, result, options = {}) {
   const owner = Math.min(result.stage, 8) - 1, kind = result.win ? 'success' : 'failure';
   if (result.stage === 9 && result.win) throw new Error('Endgame must not succeed');
   const base = result.win ? 40 * 10 ** owner : 4 * 10 ** (owner + effectiveProgressOf(result));
@@ -276,7 +278,8 @@ export function settle(p, result) {
   p[wallet] += gained;
   if (!Number.isSafeInteger(p[wallet])) throw new RangeError('Wallet exceeds exact range');
   let spent = 0, bought = 0;
-  for (;;) {
+  const autoBuy = options.buy !== false;
+  while (autoBuy) {
     let index = owner;
     if (kind === 'success') {
       index = 0;

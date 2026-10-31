@@ -1,4 +1,4 @@
-// src/num.js — 显示层的大数与文本口径（**只做显示，不参与任何数值**）
+﻿// src/num.js — 显示层的大数与文本口径（**只做显示，不参与任何数值**）
 //
 // V8 的真实量是 Scientific{mantissa, exponent}（§2.1），工作坐标仍是 Number。
 // 这里统一把三种输入（Scientific / {m,e} / Number / 字符串）转成同一种输出：
@@ -24,6 +24,11 @@ export function toSci(v) {
 
 const shortExponent = (exp) => String(exp);
 
+/** 真实量下溢出 Number 表示范围（1e-344 这种）时按 0 兜底，不让显示层抛错 */
+const safeNumber = (d) => {
+  try { return d.toNumber(); } catch (e) { return 0; }
+};
+
 /** 科学计数法：2.49e249 / 2.49e2492094949 / 1.23e-1（负指数只在内部，显示走 formatDisplay） */
 export function formatScientific(v, digits = 3) {
   const d = toSci(v);
@@ -38,14 +43,17 @@ export function formatDisplay(v, digits = 3) {
   if (d.mantissa === 0) return '0';
   const log = d.exponent + Math.log10(d.mantissa);
   if (log < 0) {
-    const value = d.toNumber();
+    const value = safeNumber(d);
+    if (value === 0) return '0';
     const a = Math.abs(value);
     const places = Math.min(9, Math.max(2, 2 - Math.floor(Math.log10(a))));
     const s = value.toFixed(places).replace(/0+$/, '').replace(/\.$/, '');
-    return s === '0' || s === '-0' ? value.toFixed(9).replace(/0+$/, '') : s;
+    return s === '0' || s === '-0'
+      ? value.toFixed(9).replace(/0+$/, '').replace(/\.$/, '')
+      : s;
   }
   if (log < 6) {
-    const value = d.toNumber();
+    const value = safeNumber(d);
     return log < 3 ? String(Math.round(value * 100) / 100) : String(Math.round(value));
   }
   return formatScientific(d, digits);
@@ -78,11 +86,11 @@ export function formatRatio(x, digits = 2) {
   return String(Number(x.toFixed(digits)));
 }
 
-/** mtc 显示口径：内部 R × 1000（尾数移位，不做 Number 乘法） */
-export function scaled1000(v) {
+/** mtc 显示口径：内部 R × 10（尾数移位，不做 Number 乘法）；显示时再四舍五入成整数 */
+export function scaledMtc(v) {
   const d = toSci(v);
   if (d.mantissa === 0) return new Scientific(0);
-  return new Scientific(d.mantissa * 1000, d.exponent);
+  return new Scientific(d.mantissa * 10, d.exponent);
 }
 
 export function formatTime(sec) {

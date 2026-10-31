@@ -1,4 +1,4 @@
-﻿// src/db.js — 外壳数据：八层的显示名、64 项升级名、八个失败科技、四个成功科技、科技树。
+// src/db.js — 外壳数据：八层的显示名、64 项升级名、八个失败科技、四个成功科技、科技树。
 //
 // 铁律：这里只放**名字和展示元数据**。任何数值参数（价格、门槛、密度、倍率、目标）
 // 一律来自 src/v8.js 的 CONFIG / specification()，不得在本文件重新定义一份。
@@ -16,9 +16,11 @@ export const TUNING = {
 };
 
 // 档名（八层 + 终局）
+// 口径：后四层按剧情尺度命名（整颗星球 → 星球之外 → 星系 → 宇宙 → 宇宙之外），
+//       用奶茶配料做卡通前缀，避免清一色「深渊」；「深渊」只留给终局。
 export const TIER_NAMES = [
   '奶茶店', '耶维城', '飞龙国', '奶茶大陆',
-  '深渊回廊', '残光高塔', '骨白壁垒', '侵蚀之底', '深渊尽头',
+  '奶盖星球', '珍珠月', '黑糖星系', '气泡宇宙', '深渊',
 ];
 
 // 每层 8 项的名字：位置 p=0..7 对应 A..H（§3.1）
@@ -48,34 +50,34 @@ export const ITEM_GROUPS = {
 
 // 每层的机制一句话（升级页顶部说明 / 截图用）
 export const LAYER_MECHANICS = {
-  1: '生产 + 力量资源转化',
-  2: '第二生产 + 全体效率',
-  3: '单次削减效率 + 削减回收',
-  4: '普通削减频率 + 敌方转化',
-  5: '同步：只补弱侧，强侧小回馈',
-  6: '蓄能：生产充能，冷却满后一次性释放',
-  7: '缓冲：触碰失败线时吸收本 tick 新增压力',
-  8: '侵蚀：削弱压力增长，疲劳随侵蚀累积',
+  1: '生产 + 奶茶币转化',
+  2: '第二生产线 + 全局效率',
+  3: '攻击力 + 攻击回收',
+  4: '攻击频率 + 深渊加成',
+  5: '同步：补强落后一侧',
+  6: '蓄能：产量充能，冷却后释放',
+  7: '缓冲：吸收追平的压力',
+  8: '侵蚀：压制深渊增长',
 };
 
 // 失败永久 n1..n8（记忆点数购买，永不重置）
 export const FAILURE_NAMES = [
-  { id: 'memory', name: '记忆库', effect: '有效等级越高，生产越强（一层 exp、高层 1+0.02 倍）' },
-  { id: 'ledger', name: '人情账', effect: '两个原始生产来源互相借用，只借一次' },
-  { id: 'muscle', name: '手感', effect: '每第 5 次普通削减乘以 1+3·ln(1+n3)' },
-  { id: 'longrun', name: '长跑', effect: '所有削减随本程时间增长：1+0.5·ln(1+n4)·√(runTime/600)' },
-  { id: 'resonance', name: '共振', effect: '第五层同步里，强侧从弱侧补强中取得 0.1·ln(1+n5) 回馈' },
-  { id: 'afterheat', name: '余温', effect: '蓄能释放消耗的 spent 有 n6/(10+n6) 进入余能，30 秒尺度回充' },
-  { id: 'stress', name: '应激', effect: '缓冲消耗后应急状态增加 0.1·ln(1+n7)·ln(1+used)，加快下次积累' },
-  { id: 'fatigue', name: '疲劳', effect: '疲劳以 ln(1+n8)·ln(1+C) 累积，放大侵蚀对压力增长的削弱' },
+  { id: 'memory', name: '记忆库', effect: '产量随覆灭次数提升' },
+  { id: 'ledger', name: '人情账', effect: '两条生产线互相借用（只借一次）' },
+  { id: 'muscle', name: '手感', effect: '每第 5 次攻击威力提升' },
+  { id: 'longrun', name: '长跑', effect: '攻击力随本程时间提升' },
+  { id: 'resonance', name: '共振', effect: '同步补强产生回馈' },
+  { id: 'afterheat', name: '余温', effect: '蓄能释放部分转为余能回充' },
+  { id: 'stress', name: '应激', effect: '缓冲救场后加快下次积累' },
+  { id: 'fatigue', name: '疲劳', effect: '疲劳放大侵蚀对深渊的压制' },
 ];
 
 // 成功永久（四项全局科技，§5.2 / §10.3）
 export const SUCCESS_NAMES = [
-  { id: 'up', key: 'up', name: '记忆·生产', stat: 'MP', desc: '生产效率：10^(系数×up + 重跑项)，只乘生产' },
-  { id: 'ud', key: 'ud', name: '记忆·削减', stat: 'MD', desc: '削减效率：10^(0.06×ud)，只乘削减' },
-  { id: 'us', key: 'us', name: '守护·余响', stat: 'MS', desc: '成功资源：(1+us)^0.02，只乘成功收入' },
-  { id: 'uf', key: 'uf', name: '覆灭·余烬', stat: 'MF', desc: '失败资源：(1+uf)^0.02，只乘失败收入' },
+  { id: 'up', key: 'up', name: '净化效率', stat: '产量', desc: '只强化产量：每级 ×1.58' },
+  { id: 'ud', key: 'ud', name: '削减效率', stat: '攻击', desc: '只强化攻击：每级 ×1.15' },
+  { id: 'us', key: 'us', name: '守护点数倍率', stat: '守护收入', desc: '只强化守护收入：每级 +2%' },
+  { id: 'uf', key: 'uf', name: '记忆点数倍率', stat: '覆灭收入', desc: '只强化覆灭收入：每级 +2%' },
 ];
 
 // 自动购买科技（每层一条，0..22 级；正式游戏默认 0 级，验收脚本置满级）
@@ -105,7 +107,7 @@ const AUTO_TECH = {
   id: 'autobuy',
   name: '自动购买',
   slot: 'root',
-  desc: '本层的自动购买频率：1–8 级每秒买第 N 项；9–21 级逐级压缩间隔到 0.05 秒；22 级每 tick 买「本 tick 能买的全部」',
+  desc: '本层的自动购买频率：1–8 级每秒买对应的一项；9–21 级间隔逐级缩短；22 级每 0.05 秒购买所有可买项',
   kind: 'autoBuy',
   maxLevel: AUTO_MAX_LEVEL,
 };
@@ -163,22 +165,22 @@ export const CHARACTERS = {
   },
   shuangjin: {
     id: 'shuangjin', name: '双禁', title: '共振者', angle: -90, layer: 5,
-    blurb: '剧情设定后补。机制：同步——只补弱侧，强侧取得小回馈。',
+    blurb: '',
     items: ITEM_NAMES[5], groups: ITEM_GROUPS[5],
   },
   xixi: {
     id: 'xixi', name: '曦曦', title: '蓄能者', angle: -135, layer: 6,
-    blurb: '剧情设定后补。机制：蓄能——生产充能，冷却满后一次性释放。',
+    blurb: '',
     items: ITEM_NAMES[6], groups: ITEM_GROUPS[6],
   },
   kongmiao: {
     id: 'kongmiao', name: '空喵', title: '缓冲者', angle: 180, layer: 7,
-    blurb: '剧情设定后补。机制：缓冲——触碰失败线时吸收本 tick 新增压力。',
+    blurb: '',
     items: ITEM_NAMES[7], groups: ITEM_GROUPS[7],
   },
   xyt: {
     id: 'xyt', name: 'XyT', title: '侵蚀者', angle: 135, layer: 8,
-    blurb: '剧情设定后补。机制：侵蚀——削弱压力增长，疲劳随侵蚀累积。',
+    blurb: '',
     items: ITEM_NAMES[8], groups: ITEM_GROUPS[8],
   },
 };

@@ -13,10 +13,16 @@ import {
 } from './v8.js';
 import {
   CHARACTERS, CHARACTER_ORDER, CHAR_TO_LAYER, LAYER_TO_CHAR, TIER_NAMES,
-  TUNING, TECH_TREE, itemsOf, techsOf, FAILURE_NAMES, SUCCESS_NAMES,
+  TUNING, itemsOf, techsOf, FAILURE_NAMES, SUCCESS_NAMES,
   AUTO_MAX_LEVEL, autoTechCost, autoTechInterval, LAYER_MECHANICS,
 } from './db.js';
 import { STORY } from './story.js';
+import { formatDisplay } from './num.js';
+import { DEBUG_ENTRIES } from './debug.js';
+import {
+  TREE_CENTER, TREE_TRUNKS, TREE_LEAVES, CHAR_TREE_NODES, CENTER_STEPS,
+  centerCost, treeInterval,
+} from './tree.js';
 import { ACHIEVEMENTS } from './achievements.js';
 
 export const STATE_VERSION = 'v8';
@@ -62,6 +68,9 @@ export function createInitialState() {
       cleared: { mantissa: 0, exponent: 0 },
       bestPowerLog: 0,
     },
+    // 科技树：中心等级 + 叶子（占位，无效果）；主干等级直接读 permanent.success
+    tree: { center: 0, leaves: {} },
+    treeTimer: 0,
     ledger: [],
     lastSegment: null,
     achievements: [],
@@ -70,6 +79,17 @@ export function createInitialState() {
 
 const arr8 = (a) => Array.from({ length: 8 }, (_, i) => (Number.isFinite(a?.[i]) ? a[i] : 0));
 const arr4 = (a) => Array.from({ length: 4 }, (_, i) => (Number.isFinite(a?.[i]) ? a[i] : 0));
+
+// 调试跳层：目标层之前才触发的初见剧情（cond · at:layer）标记已读，避免跳层后被旧剧情刷屏；
+// 当前层自己的初见剧情不算「之前」，照常在到达后播放。
+function earlierLayerStory(entry, stage) {
+  const when = entry.trigger && entry.trigger.when;
+  if (!when) return false;
+  if (when.at === 'layer') return (when.n ?? 1) < stage;
+  if (when.all) return when.all.every((w) => earlierLayerStory({ trigger: { when: w } }, stage));
+  if (when.any) return when.any.some((w) => earlierLayerStory({ trigger: { when: w } }, stage));
+  return false;
+}
 
 export class Engine {
   constructor(state) {
@@ -90,6 +110,8 @@ export class Engine {
     this.s.stats = Object.assign(createInitialState().stats, this.s.stats || {});
     this.s.stats.failures = arr8(this.s.stats.failures);
     this.s.stats.guardsByStage = arr8(this.s.stats.guardsByStage);
+    this.s.tree = Object.assign({ center: 0, leaves: {} }, this.s.tree || {});
+    this.s.treeTimer = Number.isFinite(this.s.treeTimer) ? this.s.treeTimer : 0;
     if (!this.s.stats.cleared || !Number.isFinite(this.s.stats.cleared.mantissa)) {
       this.s.stats.cleared = { mantissa: 0, exponent: 0 };
     }
@@ -116,6 +138,16 @@ export class Engine {
   /** 当前层角色 id（终局用八层角色） */
   charOf(stage) { return LAYER_TO_CHAR[Math.min(stage, 8)]; }
 
+  /**
+   * 结算时是否自动购买永久升级：
+   *   · headless（数值基准 / 验收 / 离线补算）恒为 true —— 与数值文档 §10.2 / §10.3 一致；
+   *   · 实际游戏由科技树「自动化中枢」Lv1 解锁（用户口径：自动购买永久升级要科技树解锁）。
+   */
+  permAutoBuyEnabled() {
+    if (this.headless) return true;
+    return (this.s.tree && this.s.tree.center ? this.s.tree.center : 0) >= 1;
+  }
+
   makeSegment(stage, runTicks) {
     const seg = new Segment(stage, this.permanent, { runTicks });
     seg.buyer = (sg) => this.autoBuyStep(sg);
@@ -131,6 +163,8 @@ export class Engine {
     const result = this.seg.tick();
     s.stats.playTime += CONFIG.dt;
     s.stats.ticks++;
+    // 科技树中心的自动行为（0 级时函数立刻返回，不影响数值基准）
+    this.treeAutoStep(CONFIG.dt);
     if (!result) { this.checkStoryConditions(); return null; }
     const kind = result.win ? 'guard' : 'collapse';
     if (s.auto[kind]) { this.finishSegment(result); return result; }
@@ -149,7 +183,7 @@ export class Engine {
       failure: [...this.permanent.failure], success: [...this.permanent.success],
       failureWallet: this.permanent.failureWallet, successWallet: this.permanent.successWallet,
     };
-    const ev = settleNumeric(copy, result);
+    const ev = settleNumeric(copy, result, { buy: this.permAutoBuyEnabled() });
     const base = {
       kind: ev.kind, stage: result.stage, owner: ev.owner, gained: ev.gained, spent: ev.spent,
       walletAfter: copy[`${ev.kind}Wallet`],
@@ -180,6 +214,126 @@ export class Engine {
     return this.finishSegment(result);
   }
 
+  /** 科技树的全部节点（中心 / 主干 / 叶子 / 角色节点）+ 可买状态 */
+  treeNodes() {
+    const s = this.s;
+    const pp = this.permanent.successWallet;
+    const center = s.tree.center || 0;
+    const out = [];
+
+    const cCost = centerCost(center);
+    out.push({
+      id: TREE_CENTER.id, name: TREE_CENTER.name, slot: 'center',
+      level: center, maxLevel: TREE_CENTER.maxLevel, cost: cCost,
+      canBuy: cCost !== null && pp >= cCost,
+      blocked: cCost === null ? '已满级' : (pp < cCost ? '守护点数不足' : ''),
+      desc: center > 0
+        ? `Lv ${center}：${CENTER_STEPS[center - 1]}${center < TREE_CENTER.maxLevel ? `　→ 下一级：${CENTER_STEPS[center]}` : ''}`
+        : '按等级依次解锁：自动购买全角色科技 → 自动覆灭 → 自动守护 → 四项主干自动购买',
+      steps: CENTER_STEPS,
+    });
+
+    for (const t of TREE_TRUNKS) {
+      const lv = this.permanent.success[t.successIndex];
+      const cost = permanentCost('success', t.successIndex, lv);
+      const pre = center >= 1;
+      out.push({
+        id: t.id, name: t.name, slot: 'trunk', stat: t.stat, angle: t.angle, parent: t.parent,
+        successIndex: t.successIndex, level: lv, cost,
+        canBuy: pre && pp >= cost,
+        blocked: !pre ? '需先购买「自动化中枢」' : (pp < cost ? '守护点数不足' : ''),
+        desc: `${SUCCESS_NAMES[t.successIndex].name}：${SUCCESS_NAMES[t.successIndex].desc}`,
+      });
+    }
+
+    const byId = new Map(out.map((n) => [n.id, n]));
+    for (const lf of TREE_LEAVES) {
+      const parent = byId.get(lf.parent);
+      const lv = s.tree.leaves?.[lf.id] || 0;
+      out.push({
+        id: lf.id, name: lf.name, slot: 'leaf', angle: lf.angle, parent: lf.parent, level: lv, cost: 0,
+        canBuy: !!parent && parent.level >= 1,
+        blocked: parent && parent.level >= 1 ? '' : '需先购买前置主干',
+        desc: '效果为空（占位节点，价格 0）',
+      });
+    }
+
+    for (const [charId, list] of Object.entries(CHAR_TREE_NODES)) {
+      for (const n of list) {
+        out.push({
+          id: n.id, name: n.name, slot: 'char', charId, layer: n.layer, index: n.index,
+          level: 0, cost: null, canBuy: false,
+          blocked: '未开放（AP 节点，效果为空）', desc: '效果为空，不可购买',
+        });
+      }
+    }
+    return out;
+  }
+
+  /** 买一个科技树节点；返回 { ok, msg } */
+  buyTreeNode(id) {
+    const node = this.treeNodes().find((n) => n.id === id);
+    if (!node) return { ok: false, msg: '没有这个节点' };
+    if (node.slot === 'char') return { ok: false, msg: '角色节点未开放（效果为空）' };
+    if (!node.canBuy) return { ok: false, msg: node.blocked || '买不起' };
+    if (node.slot === 'center') {
+      this.permanent.successWallet -= node.cost;
+      this.s.tree.center = (this.s.tree.center || 0) + 1;
+      return { ok: true, msg: `自动化中枢升到 Lv ${this.s.tree.center}` };
+    }
+    if (node.slot === 'trunk') {
+      this.permanent.successWallet -= node.cost;
+      this.permanent.success[node.successIndex] += 1;
+      return { ok: true, msg: `${node.name} 升到 Lv ${this.permanent.success[node.successIndex]}` };
+    }
+    // 叶子：价格 0、无效果
+    this.s.tree.leaves[id] = (this.s.tree.leaves[id] || 0) + 1;
+    return { ok: true, msg: `${node.name} 已购买（占位节点，无效果）` };
+  }
+
+  /** 手动购买某一层的专属永久升级（科技页按钮，花 MP）；价格与结算自动购买完全同源 */
+  buyFailureTech(stage) {
+    const idx = Math.min(stage, 8) - 1;
+    const level = this.permanent.failure[idx];
+    const cost = permanentCost('failure', idx, level);
+    if (this.permanent.failureWallet < cost) return false;
+    this.permanent.failureWallet -= cost;
+    this.permanent.failure[idx] = level + 1;
+    return true;
+  }
+
+  /**
+   * 科技树中心的自动行为（中心 0 级时立刻返回，保证数值基准零影响）：
+   *   1 级 自动购买全角色科技（自动购买科技 + 专属永久升级，各升 1 级，MP）
+   *   2 级 自动覆灭结算 / 3 级 自动守护结算
+   *   4–7 级 自动购买四个主干（净化效率 / 伤害效率 / MP 倍率 / PP 倍率）
+   *   间隔：1–7 级每秒一次；8–12 级每级 ×0.8；13 级满级 0.05 秒（每秒 20 次）
+   */
+  treeAutoStep(dt) {
+    const s = this.s;
+    const c = s.tree.center || 0;
+    if (c <= 0) return 0;
+    if (c >= 2) s.auto.collapse = true;
+    if (c >= 3) s.auto.guard = true;
+    const iv = treeInterval(c);
+    s.treeTimer = (s.treeTimer || 0) + dt;
+    if (s.treeTimer + 1e-12 < iv) return 0;
+    s.treeTimer -= iv;
+    if (s.treeTimer < 0) s.treeTimer = 0;
+    let acted = 0;
+    if (c >= 1) {
+      // 1 级：自动购买全角色科技 = 自动购买科技（MP）+ 该角色的专属永久升级（MP）
+      for (const id of CHARACTER_ORDER) {
+        if (this.buyAutoTech(id)) acted++;
+        if (this.buyFailureTech(CHAR_TO_LAYER[id])) acted++;
+      }
+    }
+    for (const t of TREE_TRUNKS) {
+      if (c >= t.autoLevel && this.buyTreeNode(t.id).ok) acted++;
+    }
+    return acted;
+  }
+
   // ── 自动购买科技（0..22 级，每层一条）──
   autoBuyInfo(charId) {
     const stage = CHAR_TO_LAYER[charId];
@@ -191,7 +345,7 @@ export class Engine {
       const iv = autoTechInterval(level);
       const ivText = iv >= 0.1 ? Number(iv.toFixed(2)) : Number(iv.toFixed(3));
       effect = `每 ${ivText} 秒自动购买一次「本层最便宜的一项」（≈ ${(1 / iv).toFixed(2)} 次/秒）`;
-    } else effect = '每 0.05 秒执行一次「本 tick 能买的全部」（数值基准）';
+    } else effect = '每 0.05 秒购买所有可买项';
     return {
       charId, stage, level, maxLevel: AUTO_MAX_LEVEL,
       nextCost: level >= AUTO_MAX_LEVEL ? 0 : autoTechCost(stage, level),
@@ -237,7 +391,7 @@ export class Engine {
   finishSegment(seg) {
     const s = this.s;
     const stage = seg.stage;
-    const event = settleNumeric(this.permanent, seg);
+    const event = settleNumeric(this.permanent, seg, { buy: this.permAutoBuyEnabled() });
     s.ledger.push({
       kind: event.kind, stage, owner: event.owner, gained: event.gained, spent: event.spent,
       time: seg.time, win: seg.win, runTicks: seg.runTicks,
@@ -358,26 +512,25 @@ export class Engine {
     return this.seg.unlocked.findIndex((u) => !u);
   }
 
-  /** 单项机制说明（只展示，不含当前数值） */
+  /** 单项机制说明（还没买时的「它是什么」；只展示，不含当前数值） */
   itemMechanism(item) {
-    const owner = item.owner, kind = item.kind;
+    const owner = item.owner, kind = item.kind, stage = this.s.stage;
     const table = {
-      1: ['生产：一层 1.5^有效等级；其余层 (1+有效等级)', '资源转化 η = √(1+有效等级/10)'],
-      2: ['第二生产 R₂ = 1+3·有效等级', '全体效率 global = √(1+有效等级/10)'],
-      3: ['单次削减 D 线性加算', '削减回收 ρ = 0.1·ln(1+有效等级)'],
-      4: ['普通削减频率 = min(20, 1+2·有效等级)，超 20 转单次效率', '敌方系数 = 1+ln(1+有效等级)/10·√(压力/10)'],
-      5: ['同步：生产弱时 SP = 1 + ln(D/P₀)·ln(1+有效等级)/10', '同步：削减弱时 SD = 1 + ln(P₀/D)·ln(1+有效等级)/10'],
-      6: ['生产充能：每 tick 0.02·ln(1+有效等级)·P', '释放效率：×[1+2·ln(1+有效等级)]'],
-      7: ['缓冲积累：0.1·ln(1+有效等级)·(1+ln(1+A))·dt', '吸收效率：×[1+0.2·ln(1+有效等级)]'],
-      8: ['侵蚀施加：每次削减 0.01·ln(1+有效等级)·ln(1+removed)', '侵蚀抑制：0.1·ln(1+有效等级)·C·(1+ln(1+W))'],
+      1: [stage === 1 ? '每级：奶茶产量 ×1.5' : '每级：奶茶产量 +1', '提升奶茶币转化率'],
+      2: ['每级：事务产量 +3', '提升产量与攻击力'],
+      3: ['每级：攻击力 +1', '攻击时回收奶茶币'],
+      4: ['提升攻击频率（上限 20/秒，超出转为攻击力）', '攻击力随深渊提升'],
+      5: ['产量落后时补强产量', '削减落后时补强攻击力'],
+      6: ['产量持续充入蓄能', '提升蓄能释放威力'],
+      7: ['加快缓冲积累', '提升缓冲吸收效率'],
+      8: ['攻击时积累侵蚀', '侵蚀压制深渊增长'],
     };
     const row = table[owner] || ['生产相关', '效率相关'];
     return row[kind];
   }
 
-  /** 单项「当前有效等级带来的效果」，纯展示 */
-  itemEffect(item) {
-    const eff = item.effective;
+  /** 单项「有效等级为 eff 时」的效果，纯展示（不参与任何数值） */
+  itemEffectAt(item, eff) {
     const owner = item.owner, kind = item.kind, stage = this.s.stage;
     const num = (x) => {
       if (!Number.isFinite(x)) return '—';
@@ -385,26 +538,42 @@ export class Engine {
       if (a === 0) return '0';
       if (a < 1) { const s = x.toPrecision(2); return s.includes('e') ? x.toFixed(6) : s; }
       if (a >= 1e6) return x.toExponential(2);
-      return String(Number(x.toFixed(3)));
+      if (a >= 100) return String(Number(x.toFixed(1)));
+      return String(Number(x.toFixed(2)));
     };
     if (owner === 1 && kind === 0) {
-      return stage === 1 ? `×1.5^${num(eff)}（当前 ×${num(1.5 ** eff)}）` : `一阶加算 +${num(eff)}`;
+      return stage === 1 ? `奶茶产量 ×${num(1.5 ** eff)}` : `奶茶产量 +${num(eff)}`;
     }
-    if (owner === 1 && kind === 1) return `η ×${num(Math.sqrt(1 + eff / 10))}`;
-    if (owner === 2 && kind === 0) return `二阶 +${num(3 * eff)}（×${num(1 + 3 * eff)}）`;
-    if (owner === 2 && kind === 1) return `global ×${num(Math.sqrt(1 + eff / 10))}`;
-    if (owner === 3 && kind === 0) return `单次削减 +${num(eff)}`;
-    if (owner === 3 && kind === 1) return `ρ ${num(0.1 * Math.log1p(eff))}`;
-    if (owner === 4 && kind === 0) return `频率 +${num(2 * eff)}/秒（上限 20）`;
-    if (owner === 4 && kind === 1) return `敌方系数 ×${num(1 + Math.log1p(eff) / 10 * Math.sqrt(this.seg.pressure / 10))}`;
-    if (owner === 5 && kind === 0) return `同步补强 ln(1+${num(eff)})`;
-    if (owner === 5 && kind === 1) return `同步补强 ln(1+${num(eff)})`;
-    if (owner === 6 && kind === 0) return `充能 ×${num(0.02 * Math.log1p(eff))}/力量`;
-    if (owner === 6 && kind === 1) return `释放 ×${num(1 + 2 * Math.log1p(eff))}`;
-    if (owner === 7 && kind === 0) return `积累 ×${num(0.1 * Math.log1p(eff))}/秒`;
-    if (owner === 7 && kind === 1) return `吸收 ×${num(1 + 0.2 * Math.log1p(eff))}`;
-    if (owner === 8 && kind === 0) return `侵蚀 ×${num(0.01 * Math.log1p(eff))}/削减`;
-    return `抑制 ×${num(0.1 * Math.log1p(eff))}`;
+    if (owner === 1 && kind === 1) return `奶茶币转化率 ×${num(Math.sqrt(1 + eff / 10))}`;
+    if (owner === 2 && kind === 0) return `事务产量 ×${num(1 + 3 * eff)}`;
+    if (owner === 2 && kind === 1) return `产量与攻击力 ×${num(Math.sqrt(1 + eff / 10))}`;
+    if (owner === 3 && kind === 0) return `攻击力 +${num(eff)}`;
+    if (owner === 3 && kind === 1) return `攻击回收率 +${num(0.1 * Math.log1p(eff))}`;
+    if (owner === 4 && kind === 0) {
+      return `攻击频率 ${num(Math.min(20, 1 + 2 * eff))}/秒`;
+    }
+    if (owner === 4 && kind === 1) {
+      return `攻击力 ×${num(1 + Math.log1p(eff) / 10 * Math.sqrt(this.seg.pressure / 10))}`;
+    }
+    if (owner === 5 && kind === 0) return `产量补强 ×${num(this.bonuses().sp)}`;
+    if (owner === 5 && kind === 1) return `削减补强 ×${num(this.bonuses().sd)}`;
+    if (owner === 6 && kind === 0) return `蓄能充能 +${num(0.02 * Math.log1p(eff) * 20)}/秒`;
+    if (owner === 6 && kind === 1) return `释放威力 ×${num(1 + 2 * Math.log1p(eff))}`;
+    if (owner === 7 && kind === 0) return `缓冲积累 +${num(0.1 * Math.log1p(eff))}/秒`;
+    if (owner === 7 && kind === 1) return `缓冲吸收 ×${num(1 + 0.2 * Math.log1p(eff))}`;
+    if (owner === 8 && kind === 0) return `侵蚀积累 +${num(0.01 * Math.log1p(eff))}/次攻击`;
+    return `深渊压制 +${num(0.1 * Math.log1p(eff))}`;
+  }
+
+  /** 单项当前效果（大白话） */
+  itemEffect(item) {
+    return this.itemEffectAt(item, item.effective);
+  }
+
+  /** 单项「净化力达到多少才解锁」的提示文字 */
+  itemUnlockText(item) {
+    const force = forceFromWork(this.s.stage, item.nextThreshold);
+    return `净化力达到 ${formatDisplay(force)} 后解锁`;
   }
 
   /** 每层两张科技卡：自动购买（树根）+ 该层失败永久 */
@@ -420,33 +589,15 @@ export class Engine {
         };
       }
       const level = this.permanent.failure[stage - 1];
+      const nextCost = permanentCost('failure', stage - 1, level);
       return {
         id: t.id, name: t.name, desc: t.desc, kind: t.kind, level,
-        maxLevel: t.maxLevel, enabled: true,
-        nextCost: permanentCost('failure', stage - 1, level),
-        affordable: false,
+        maxLevel: t.maxLevel, enabled: true, stage,
+        nextCost,
+        // 结算不再默认替玩家买：科技页给手动按钮，自动购买要科技树 Lv1
+        affordable: this.permanent.failureWallet >= nextCost,
       };
     });
-  }
-
-  /** 科技树：根 = 自动购买，四叶 = 四个成功科技 */
-  techTree(stage) {
-    const info = this.autoBuyInfo(this.charOf(stage));
-    const leaves = TECH_TREE.leaves.map((leaf) => {
-      const level = this.permanent.success[leaf.index];
-      return {
-        ...leaf,
-        level,
-        nextCost: permanentCost('success', leaf.index, level),
-        // 成功科技只能用守护结算时自动买（§10.3），这里只读展示
-        affordable: false,
-      };
-    });
-    return {
-      root: { ...TECH_TREE.root, level: info.level, maxLevel: info.maxLevel, maxed: info.level >= info.maxLevel, nextCost: info.nextCost, affordable: info.affordable, effect: info.effect },
-      leaves,
-      wallet: this.permanent.successWallet,
-    };
   }
 
   successes() {
@@ -495,6 +646,7 @@ export class Engine {
       pressurePct: pct(seg.pressure),
       progress: Math.max(0, Math.min(1, seg.power / targetWork)),
       pressureRatio: seg.power > 0 ? seg.pressure / seg.power : 0,
+      income: e.production * e.conversion,
       runTicks: s.runTicks,
       runTime: (s.runTicks + seg.tickIndex) * CONFIG.dt,
       stageTime: seg.tickIndex * CONFIG.dt,
@@ -519,6 +671,11 @@ export class Engine {
       cleared: Scientific.fromJSON(s.stats.cleared).add(seg.cleared).toJSON(),
       clearedStage: seg.cleared.toJSON(),
       clearedWork: seg.removedTotal,
+      tree: this.treeNodes(),
+      treeCenter: s.tree.center || 0,
+      treeInterval: treeInterval(s.tree.center || 0),
+      treeTimer: s.treeTimer || 0,
+      permAutoBuy: this.permAutoBuyEnabled(),
       stats: s.stats,
     };
   }
@@ -688,7 +845,7 @@ export class Engine {
    * （有效等级 = demo，实际等级 = demo×density，所以旧层会出现上亿级 —— 与真实流程同量级）。
    * 只给 Playwright 与本地验收用；不参与游戏流程，也不影响存档校验。
    */
-  scene(stage, { ticks = 0, autoLevel = AUTO_MAX_LEVEL, demo = 0, wallet = 0 } = {}) {
+  scene(stage, { ticks = 0, autoLevel = 0, demo = 0, wallet = 0 } = {}) {
     const s = this.s;
     this.headless = true;
     for (const id of CHARACTER_ORDER) s.autoBuyLv[id] = autoLevel;
@@ -736,6 +893,52 @@ export class Engine {
     }
     this.s.seg = this.seg.toJSON();
     return this;
+  }
+
+  // ── 调试跳层（设置页）──
+  /** 设置页按钮的视图模型（层数从 0 开始数：0 = 第 1 层起点，8 = 终局入口） */
+  debugJumpList() {
+    return DEBUG_ENTRIES.map((e) => ({
+      stage: e.stage,
+      label: `${e.stage - 1} · ${TIER_NAMES[e.stage - 1]}${e.stage === 9 ? '（终局）' : ''}`,
+      run: e.run,
+      mp: e.permanent.failureWallet,
+      pp: e.permanent.successWallet,
+      current: this.s.stage === e.stage,
+    }));
+  }
+
+  /**
+   * 直接进入某一层「首次抵达」时的存档：整份状态换成 src/debug.js 里
+   * tools/gen-debug-jumps.mjs 从全流程模拟（数值文档 §12 检查点）抓出的入口快照。
+   * 与真实到达的差异只有一处：本层自动购买科技置满级 22（数值口径 = 每 tick 买满）。
+   */
+  debugJumpTo(stage) {
+    const entry = DEBUG_ENTRIES[stage - 1];
+    if (!entry || entry.stage !== stage) return null;
+    const s = createInitialState();
+    s.stage = entry.stage;
+    s.run = entry.run;
+    s.runIndex = entry.run;
+    s.runTicks = entry.runTicks;
+    s.permanent = {
+      failure: [...entry.permanent.failure], success: [...entry.permanent.success],
+      failureWallet: entry.permanent.failureWallet, successWallet: entry.permanent.successWallet,
+    };
+    s.stats = Object.assign(s.stats, entry.stats, {
+      failures: [...entry.stats.failures],
+      guardsByStage: [...entry.stats.guardsByStage],
+      firstGuard: [...entry.stats.firstGuard],
+      firstCollapse: [...entry.stats.firstCollapse],
+      cleared: { ...entry.stats.cleared },
+    });
+    for (const id of CHARACTER_ORDER) s.autoBuyLv[id] = AUTO_MAX_LEVEL;
+    s.storySeen = STORY.filter((e) => earlierLayerStory(e, entry.stage)).map((e) => e.id);
+    s.settings = Object.assign({}, this.s.settings);
+    this.s = s;
+    this.seg = this.makeSegment(s.stage, s.runTicks);
+    this.s.seg = this.seg.toJSON();
+    return entry;
   }
 
   /** 排行榜字段 */

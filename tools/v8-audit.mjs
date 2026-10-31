@@ -1,4 +1,4 @@
-// tools/v8-audit.mjs — 独立自查（不依赖参考物，只查「我们自己的实现满足文档 §12.7 的性质」）
+﻿// tools/v8-audit.mjs — 独立自查（不依赖参考物，只查「我们自己的实现满足文档 §12.7 的性质」）
 //
 //   node tools/v8-audit.mjs
 //
@@ -227,4 +227,79 @@ const eight = campaign({});
   close(fourSeconds, 15935, 1e-12, ok('四层时长 15935.00s'));
 }
 
+// ── 11. 科技树（外壳）：中心 0 级零影响 / 等级效果 / 前置 / 价格 ──
+{
+  const { Engine: Eng, createInitialState: init } = await import('../src/engine.js');
+  const { treeInterval: iv, centerCost: cCost, TREE_NODE_TOTAL } = await import('../src/tree.js');
+  const mk = (center) => {
+    const e = new Eng(init());
+    e.headless = true;
+    e.s.tree.center = center;
+    e.permanent.successWallet = 1e6;
+    e.permanent.failureWallet = 1e6;
+    return e;
+  };
+  const zero = mk(0);
+  for (let i = 0; i < 200; i++) zero.treeAutoStep(0.05);
+  assert(!Object.values(zero.s.autoBuyLv).some((v) => v > 0), ok('中枢 0 级不自动买角色科技'));
+  assert(zero.permanent.success.every((v) => v === 0), ok('中枢 0 级不自动买主干'));
+  assert(zero.s.auto.collapse === false && zero.s.auto.guard === false, ok('中枢 0 级不改自动结算'));
+
+  const four = mk(4);
+  for (let i = 0; i < 200; i++) four.treeAutoStep(0.05);
+  assert(Object.values(four.s.autoBuyLv).every((v) => v > 0), ok('中枢 1 级起自动买全角色科技'));
+  assert(four.s.auto.collapse && four.s.auto.guard, ok('中枢 2/3 级开自动覆灭/守护'));
+  assert(four.permanent.success[0] > 0 && four.permanent.success[1] === 0,
+    ok('中枢 4 级只自动买「净化效率」'));
+
+  const seven = mk(7);
+  for (let i = 0; i < 400; i++) seven.treeAutoStep(0.05);
+  assert(seven.permanent.success.every((v) => v > 0), ok('中枢 7 级四个主干全自动买'));
+
+  const low = mk(0);
+  assert.equal(low.buyTreeNode('trunk-up').ok, false, ok('中枢未买时主干不可购买（前置）'));
+  low.s.tree.center = 1;
+  assert.equal(low.buyTreeNode('trunk-up').ok, true, ok('中枢 1 级后主干可购买'));
+  assert.equal(low.buyTreeNode('xyt-a1').ok, false, ok('角色节点不可购买'));
+
+  assert.equal(cCost(0), 2); assert.equal(cCost(6), 2); assert.equal(cCost(7), 4);
+  assert.equal(cCost(12), 128); assert.equal(cCost(13), null, ok('中枢价格：前 7 级 2 PP，之后每级 ×2'));
+  assert.equal(iv(0), Infinity); assert.equal(iv(7), 1); assert.equal(iv(8), 0.8);
+  assert.equal(iv(13), 0.05, ok('中枢间隔：1 秒 → 每级 ×0.8 → 满级 0.05 秒'));
+
+  // 结算自动购买：默认关（实际游戏），科技树 Lv1 解锁后才自动买
+  {
+    const runUntilSettle = (e, limit = 80000) => {
+      for (let i = 0; i < limit && e.state.ledger.length === 0; i++) e.tick();
+      return e.state.ledger[0];
+    };
+    const idle = new Eng(init());
+    idle.s.auto.collapse = true;
+    idle.s.auto.guard = true;
+    const first = runUntilSettle(idle);
+    assert(first && first.spent === 0, ok('未解锁：结算不替玩家花钱'));
+    assert(idle.permanent.failure.every((v) => v === 0), ok('未解锁：永久升级保持 0 级'));
+    assert(idle.permanent.failureWallet > 0, ok('未解锁：钱留在钱包里'));
+
+    const unlocked = new Eng(init());
+    unlocked.s.auto.collapse = true;
+    unlocked.s.auto.guard = true;
+    unlocked.s.tree.center = 1;
+    const second = runUntilSettle(unlocked);
+    assert(second && second.spent > 0, ok('中枢 Lv1 解锁后：结算开始自动购买'));
+    assert(unlocked.permanent.failure[0] > 0, ok('中枢 Lv1 解锁后：专属永久升级涨级'));
+
+    const manual = new Eng(init());
+    manual.permanent.failureWallet = 100;
+    assert.equal(manual.buyFailureTech(1), true, ok('科技页可手动购买专属永久升级'));
+    assert.equal(manual.permanent.failure[0], 1, ok('手动购买后等级 +1'));
+  }
+  const nodes = zero.treeNodes();
+  assert.equal(nodes.length, TREE_NODE_TOTAL, ok(`科技树节点数 ${nodes.length}`));
+  assert.equal(nodes.filter((n) => n.slot === 'trunk').length, 4, ok('四个主干'));
+  assert.equal(nodes.filter((n) => n.slot === 'leaf').length, 8, ok('八个叶子'));
+  assert.equal(nodes.filter((n) => n.slot === 'char').length, 72, ok('8 角色 × 9 节点'));
+  assert(nodes.filter((n) => n.slot === 'leaf').every((n) => n.cost === 0), ok('叶子价格 0'));
+  assert(nodes.filter((n) => n.slot === 'char').every((n) => n.canBuy === false), ok('角色节点不可购买'));
+}
 console.log(`[v8-audit] 通过：${checks} 项检查（其中价格恒等式 ${priceChecks} 组）。`);

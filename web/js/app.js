@@ -1,4 +1,4 @@
-﻿// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
+// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
 //
 // 铁律：
 //   ① 本文件**不计算任何数值**。一切数字来自 src/engine.js 的视图模型；
@@ -10,11 +10,13 @@
 // 科技树启用：根 = 自动购买科技（保留），四叶 = 生产效率 / 削减效率 / 成功资源 / 失败资源。
 
 import {
-  formatDisplay, formatScientific, formatInteger, formatPrice, formatRatio, formatTime, scaled1000,
+  formatDisplay, formatScientific, formatInteger, formatPrice, formatRatio, formatTime, scaledMtc,
 } from '../../src/num.js';
 import { Engine, createInitialState, STATE_VERSION } from '../../src/engine.js';
+import { TreeView } from './tree.js';
+import { treeInterval as treeIntervalOf } from '../../src/tree.js';
 import {
-  CHARACTERS, CHARACTER_ORDER, TIER_NAMES, FAILURE_NAMES, SUCCESS_NAMES, LAYER_TO_CHAR,
+  CHARACTERS, CHARACTER_ORDER, TIER_NAMES, ITEM_GROUPS, FAILURE_NAMES, SUCCESS_NAMES, LAYER_TO_CHAR,
   AUTO_MAX_LEVEL, LAYER_MECHANICS,
 } from '../../src/db.js';
 
@@ -30,8 +32,8 @@ const money = (v) => formatInteger(v);               // 钱包 / 整数
 const count = (n) => (Number.isSafeInteger(n) && Math.abs(n) < 1e15
   ? n.toLocaleString('en-US') : formatInteger(n));   // 等级（可能上亿）
 // mtc 统一 ×1000 显示：尾数移位，不做 Number 乘法（八层的量级会溢出）
-const mtcText = (v) => formatInteger(scaled1000(v));
-const mtcCost = (v) => formatPrice(scaled1000(v));
+const mtcText = (v) => formatInteger(scaledMtc(v));
+const mtcCost = (v) => formatPrice(scaledMtc(v));
 
 // ───────────────────────────── 服务器身份与存档 ─────────────────────────────
 const NET = { name: '', rev: 0, hasSave: false, online: false, syncedAt: 0, note: '连接中…' };
@@ -102,6 +104,8 @@ async function renameSelf(name) {
 // ───────────────────────────── 引擎与存档 ─────────────────────────────
 let engine = new Engine(createInitialState());
 let message = '';
+let treeView = null;
+let lastTreeSync = 0;
 let modal = null;
 let activeTab = '249';
 let activeSub = 'upgrades';
@@ -134,7 +138,7 @@ function adoptSave(text, savedAt, from) {
   if (elapsed > 5 && !inst.s.paused) {
     try {
       inst.advance(elapsed);
-      say(`从${from}存档继续，离线 ${formatTime(elapsed)} 已按 tick 重放`);
+      say(`从${from}存档继续，离线 ${formatTime(elapsed)} 已逐步补算`);
     } catch (e) {
       console.warn('离线结算中断', e);
       say('离线补算中断，已保留当前进度');
@@ -246,7 +250,7 @@ function hudVM() {
     pressurePct: (v.pressurePct * 100).toFixed(2),
     powerPctText: `${(v.powerPct * 100).toFixed(2)}%`,
     pressurePctText: `${(v.pressurePct * 100).toFixed(2)}%`,
-    pressureRatioText: fmtRatio(v.pressureRatio),
+    pressureRatioText: `深渊压迫 ${(v.pressureRatio * 100).toFixed(v.pressureRatio < 0.1 ? 1 : 0)}%`,
     danger: v.pressureRatio >= 0.8,
     paused: !!v.paused,
     wallets: { mp: money(v.wallets.mp), pp: money(v.wallets.pp) },
@@ -298,7 +302,10 @@ function pendingVM() {
     walletAfter: money(pv.walletAfter || 0),
     levelsGained: count(pv.levelsGained || 0),
     lines,
-    walletName: isGuard ? '守护点数 PP' : '记忆点数 MP',
+    walletName: isGuard ? '守护点数' : '记忆点数',
+    autoNote: engine.permAutoBuyEnabled()
+      ? ''
+      : '未解锁自动购买：这笔钱先存着，去「249 → 科技树」买「自动化中枢」Lv1 才会自动花，或在科技页手动升级',
     next: isGuard
       ? (p.stage === 8 ? '八层全部守护：结算后进入终局（终局永不胜，只判失败）'
         : `结算后进入第 ${p.stage + 1} 层「${TIER_NAMES[p.stage]}」`)
@@ -317,32 +324,28 @@ function itemsVM(charId) {
   const all = engine.items();
   const list = all.filter((it) => it.owner === owner);
   const nextIdx = list.findIndex((it) => !it.unlocked);
-  const groups = CHARACTERS[charId].groups;
   const toCard = (it) => ({
     index: it.index,
     id: it.id,
-    shortId: it.shortId,
     name: it.name,
-    group: it.group,
     kind: it.kind,
     owner: it.owner,
     level: count(it.level),
-    levelRaw: it.level,
-    effText: formatDisplay(it.effective),
     unlocked: !!it.unlocked,
-    old: it.isOld,
     price: mtcCost(it.price),
     affordable: !!it.affordable,
     effect: it.level > 0 ? engine.itemEffect(it) : engine.itemMechanism(it),
+    effectNext: it.unlocked && it.level > 0
+      ? engine.itemEffectAt(it, it.effective + 1 / it.density) : null,
     mechanism: engine.itemMechanism(it),
-    unlockText: `净化力达 ${fmt(engine.view().force)} 解锁（工作门槛 ${formatDisplay(it.nextThreshold)}）`,
+    unlockText: engine.itemUnlockText(it),
   });
   const cards = list.map(toCard);
   const unlocked = cards.filter((c) => c.unlocked);
   const nextCard = nextIdx >= 0 ? cards[nextIdx] : null;
   const cols = [0, 1].map((kind) => ({
     kind,
-    title: `${kind === 0 ? '主机制' : '第二机制'} · ${groups[kind]}`,
+    title: CHARACTERS[charId].groups[kind],
     cards: unlocked.filter((c) => c.kind === kind),
     next: nextCard && nextCard.kind === kind ? nextCard : null,
   }));
@@ -359,49 +362,31 @@ function itemsVM(charId) {
 
 function techsVM(charId) {
   const stage = charStage(charId);
+  const permAuto = engine.permAutoBuyEnabled();
   return engine.techs(stage).map((t) => {
     const auto = t.kind === 'autoBuy';
     if (auto) {
       return {
         id: t.id, name: t.name, kind: t.kind, desc: t.desc,
         levelText: `Lv ${count(t.level)} / ${t.maxLevel}`,
-        note: t.effect,
-        costText: t.maxed ? '已满级（每 tick 买本 tick 能买的全部）'
-          : `升级需要 ${money(t.nextCost)} 记忆点数（MP）`,
+        note: t.level > 0
+          ? t.effect
+          : '0 级不自动购买（升到 1 级起才会按上面的间隔自动买升级项）',
+        costText: t.maxed ? '已满级：每 0.05 秒购买所有可买项'
+          : `升级需要 ${money(t.nextCost)} 记忆点数`,
         auto: true, maxed: !!t.maxed, affordable: !!t.affordable, nextCost: money(t.nextCost),
       };
     }
     return {
-      id: t.id, name: t.name, kind: t.kind, desc: t.desc,
+      id: t.id, name: t.name, kind: t.kind, desc: t.desc, stage: t.stage,
       levelText: `Lv ${count(t.level)}`,
-      note: '覆灭结算时用记忆点数自动购买（本层专属）',
-      costText: `下一级 ${money(t.nextCost)} 记忆点数（MP）`,
-      auto: false, maxed: false, affordable: false, nextCost: money(t.nextCost),
+      note: permAuto
+        ? '科技树 Lv1 已解锁：覆灭/守护结算时自动购买（也可以现在手动买）'
+        : '结算不再自动购买：手动买，或在科技树买「自动化中枢」Lv1 解锁',
+      costText: `下一级 ${money(t.nextCost)} 记忆点数`,
+      auto: false, maxed: false, affordable: !!t.affordable, nextCost: money(t.nextCost),
     };
   });
-}
-
-function treeVM(charId) {
-  const stage = engine.s.stage;
-  const t = engine.techTree(Math.min(stage, 8));
-  const cx = 320, cy = 210, r = 148;
-  const leaves = t.leaves.map((l) => {
-    const rad = (l.angle * Math.PI) / 180;
-    return {
-      ...l,
-      x: cx + Math.cos(rad) * r,
-      y: cy - Math.sin(rad) * r,
-      level: count(l.level),
-      nextCost: money(l.nextCost),
-    };
-  });
-  return {
-    root: { ...t.root, level: count(t.root.level), nextCost: money(t.root.nextCost) },
-    leaves,
-    cx, cy,
-    wallet: money(t.wallet),
-    charName: CHARACTERS[charId].name,
-  };
 }
 
 function guardVM() {
@@ -409,7 +394,7 @@ function guardVM() {
   return {
     wallets: { mp: money(w.failureWallet), pp: money(w.successWallet) },
     rows: engine.successes().map((s) => ({
-      id: s.id, name: s.name, stat: s.stat, desc: s.desc,
+      id: s.id, name: s.name, desc: s.desc,
       level: count(s.level), nextCost: money(s.nextCost),
     })),
     failures: FAILURE_NAMES.map((f, i) => ({
@@ -418,32 +403,41 @@ function guardVM() {
   };
 }
 
+// totals 的 16 个分量按「层 · 机制」取名字：[a,b,c,d,...] 两两一对正好对应 1–8 层的两个机制
+const totalsLabel = (i) => `${TIER_NAMES[Math.floor(i / 2)]} · ${ITEM_GROUPS[Math.floor(i / 2) + 1][i % 2]}`;
+
 function statsVM() {
   const b = engine.bonuses();
   const v = engine.view();
   const st = engine.state.stats;
-  const rows = [
-    ['产量 P（工作/秒）', fmtDisplaySmall(b.production)],
-    ['基础产量 rawP', fmtDisplaySmall(b.rawP)],
-    ['理论削减 nominalD', fmtDisplaySmall(b.nominalD)],
-    ['单次削减 hit', fmtDisplaySmall(b.hit)],
-    ['攻击频率（次/秒）', fmtRatio(b.frequency)],
-    ['第五次强化 burst', fmtRatio(b.burst)],
-    ['同步 SP（生产侧）', fmtRatio(b.sp)],
-    ['同步 SD（削减侧）', fmtRatio(b.sd)],
-    ['同步回馈 feedback', fmtRatio(b.feedback)],
-    ['削减共同乘区', fmtDisplaySmall(b.actionMultiplier)],
-    ['资源转化 η', fmtRatio(b.conversion)],
-    ['回收 ρ', fmtRatio(b.salvage)],
-    ['整程时间倍率', fmtRatio(b.time)],
-    ['全局 global', fmtRatio(b.global)],
-    ['一阶 first', fmtDisplaySmall(b.first)],
-    ['二阶 second', fmtDisplaySmall(b.second)],
-    ['互借 share', fmtRatio(b.share)],
-    ['MP 生产倍率', fmtDisplaySmall(b.productionMultiplier)],
-    ['MD 削减倍率', fmtDisplaySmall(b.suppressionMultiplier)],
+  const production = [
+    ['实际产量（净化力/秒）', fmtDisplaySmall(b.production)],
+    ['基础产量', fmtDisplaySmall(b.rawP)],
+    ['奶茶产量（第一条生产线）', fmtDisplaySmall(b.first)],
+    ['事务产量（第二条生产线）', fmtDisplaySmall(b.second)],
+    ['产量互借比例', fmtRatio(b.share)],
+    ['全局效率', fmtRatio(b.global)],
+    ['永久科技产量加成', fmtDisplaySmall(b.productionMultiplier)],
+    ['产量同步补强', fmtRatio(b.sp)],
   ];
-  const totals = v.totals.map((x, i) => [v.totalsNames[i], fmtDisplaySmall(x)]);
+  const attack = [
+    ['理论削减（深渊/秒）', fmtDisplaySmall(b.nominalD)],
+    ['单次攻击力', fmtDisplaySmall(b.hit)],
+    ['攻击频率（次/秒）', fmtRatio(b.frequency)],
+    ['强击倍率（每第 5 次攻击）', fmtRatio(b.burst)],
+    ['超频转化（频率超出 20 的部分）', fmtRatio(b.overflow)],
+    ['永久科技攻击加成', fmtDisplaySmall(b.suppressionMultiplier)],
+    ['削减同步补强', fmtRatio(b.sd)],
+    ['攻击总倍率', fmtDisplaySmall(b.actionMultiplier)],
+    ['时间加成（随本程时间）', fmtRatio(b.time)],
+    ['同步回馈', fmtRatio(b.feedback)],
+  ];
+  const resource = [
+    ['奶茶币转化率', fmtRatio(b.conversion)],
+    ['攻击回收率', fmtRatio(b.salvage)],
+    ['奶茶币收入（奶茶币/秒）', fmtDisplaySmall(v.income)],
+  ];
+  const totals = v.totals.map((x, i) => [totalsLabel(i), fmtDisplaySmall(x)]);
   const ledger = engine.state.ledger.slice(-20).reverse().map((e, i) => ({
     key: `${e.kind}-${e.stage}-${e.runTicks}-${i}`,
     kindText: e.kind === 'success' ? '守护（成功）' : '覆灭（失败）',
@@ -455,24 +449,23 @@ function statsVM() {
     timeText: formatTime(e.time || 0),
   }));
   return {
-    effects: rows,
+    production, attack, resource,
     totals,
     ledger,
     kv: [
       ['累计游玩', formatTime(st.playTime || 0)],
-      ['总 tick 数', count(st.ticks || 0)],
-      ['总轮次（失败为界）', count(st.runs || 0)],
+      ['总步数（0.05 秒一步）', count(st.ticks || 0)],
+      ['总轮数', count(st.runs || 0)],
       ['守护次数', count(st.guards || 0)],
       ['覆灭次数', count(st.collapses || 0)],
       ['进入终局次数', count(st.endgames || 0)],
       ['各层覆灭', (st.failures || []).join(' / ')],
       ['各层守护', (st.guardsByStage || []).join(' / ')],
       ['蓄能释放次数', count(st.releases || 0)],
-      ['缓冲救活 tick', count(st.bufferSaved || 0)],
-      ['最高真实力量', `1e${Number(st.bestPowerLog || 0).toFixed(2)}`],
-      ['累计清理深渊（真实量）', fmtSci(v.cleared)],
-      ['本片段清理（真实量）', fmtSci(v.clearedStage)],
-      ['本片段实际削减（工作坐标）', fmtDisplaySmall(v.clearedWork)],
+      ['缓冲救场步数', count(st.bufferSaved || 0)],
+      ['历史最高净化力', `1e${Number(st.bestPowerLog || 0).toFixed(2)}`],
+      ['累计清除深渊', fmtSci(v.cleared)],
+      ['本层清除深渊', fmtSci(v.clearedStage)],
     ],
   };
 }
@@ -508,14 +501,16 @@ function buildVM() {
     if (CHARACTERS[tab].hasTree) subtabs.push({ id: 'tree', name: '科技树' });
     if (!subtabs.some((t) => t.id === activeSub)) activeSub = 'upgrades';
     const b = engine.bonuses();
+    const v = engine.view();
     body.charInfo = {
       name: CHARACTERS[tab].name,
       title: CHARACTERS[tab].title,
       blurb: CHARACTERS[tab].blurb,
       production: fmtDisplaySmall(b.production),
-      first: fmtDisplaySmall(b.first),
-      second: fmtDisplaySmall(b.second),
-      share: fmtRatio(b.share),
+      hit: fmtDisplaySmall(b.hit),
+      frequency: fmtRatio(b.frequency),
+      income: fmtDisplaySmall(v.income),
+      showAttack: engine.s.stage >= 3,
       isCurrent: charStage(tab) === Math.min(stage, 8),
       stage: charStage(tab),
       stageName: TIER_NAMES[charStage(tab) - 1],
@@ -524,7 +519,12 @@ function buildVM() {
     body.subtabs = subtabs;
     body.items = activeSub === 'upgrades' ? itemsVM(tab) : null;
     body.techs = activeSub === 'techs' ? techsVM(tab) : null;
-    body.tree = activeSub === 'tree' ? treeVM(tab) : null;
+    body.treeHost = activeSub === 'tree';
+    body.treeCenter = engine.s.tree.center || 0;
+    body.treeIntervalText = (() => {
+      const iv = treeIntervalOf(engine.s.tree.center || 0);
+      return Number.isFinite(iv) ? `${iv} 秒` : '—';
+    })();
     body.canUpgradeAuto = activeSub === 'techs';
   } else if (kind === 'guard') {
     body.guard = guardVM();
@@ -540,6 +540,12 @@ function buildVM() {
       note: NET.note,
       lastSync: NET.syncedAt ? `${formatTime((Date.now() - NET.syncedAt) / 1000)}前` : '还没同步过',
     };
+    // 累计游玩走 buildVM 现算：computed 读不到响应式依赖，会冻结在首次打开设置页的值
+    body.playTimeText = formatTime(engine.s.stats.playTime || 0);
+    body.debugJumps = engine.debugJumpList().map((d) => ({
+      ...d,
+      title: `第 ${d.run} 轮 · 记忆点数 ${money(d.mp)} / 守护点数 ${money(d.pp)}`,
+    }));
   }
 
   return {
@@ -563,6 +569,20 @@ function buildVM() {
 function toB64(text) { return btoa(unescape(encodeURIComponent(text))); }
 function fromB64(b64) { return decodeURIComponent(escape(atob(String(b64).trim()))); }
 
+/** 调试跳层：整份存档换成「首次抵达该层」的检查点（src/debug.js），设置页与控制台共用 */
+function performDebugJump(stage) {
+  const entry = engine.debugJumpTo(Number(stage));
+  if (!entry) { say(`调试跳层失败：没有第 ${Number(stage) - 1} 层的入口数据`); return null; }
+  app.story = null;
+  app._ignoreStoryClick = true;
+  activeTab = LAYER_TO_CHAR[Math.min(engine.s.stage, 8)];
+  activeSub = 'upgrades';
+  saveGame();
+  say(`已进入「${TIER_NAMES[entry.stage - 1]}」初始存档：第 ${entry.run} 轮 · `
+    + `记忆点数 ${money(entry.permanent.failureWallet)} / 守护点数 ${money(entry.permanent.successWallet)}`);
+  return entry;
+}
+
 function act(action, payload) {
   switch (action) {
     case 'tab':
@@ -576,7 +596,7 @@ function act(action, payload) {
       const it = engine.items()[payload];
       const name = it ? it.name : `#${payload}`;
       if (engine.buyItem(payload)) say(`「${name}」升级成功`);
-      else say(`「${name}」买不起：mtc 不够下一级的价格`);
+      else say(`「${name}」买不起：奶茶币不够下一级的价格`);
       break;
     }
     case 'buyAutoTech': {
@@ -607,9 +627,23 @@ function act(action, payload) {
       say(`${kind === 'guard' ? '自动守护' : '自动覆灭'}已${engine.s.auto[kind] ? '开启（结算不弹窗）' : '关闭（结算弹窗等你点）'}`);
       break;
     }
+    case 'buyFailureTech': {
+      const stage = Number(payload);
+      if (engine.buyFailureTech(stage)) {
+        say(`专属永久升级升到 Lv ${engine.permanent.failure[stage - 1]}`);
+      } else say('记忆点数不够下一级的价格');
+      break;
+    }
+    case 'treeBuy': {
+      const r = engine.buyTreeNode(payload);
+      say(r.msg);
+      if (r.ok && treeView) treeView.sync(engine);
+      break;
+    }
+    case 'treeFit': if (treeView) treeView.fitTree(); break;
     case 'buyMax': {
       const n = engine.buyMaxOnce();
-      say(n > 0 ? `本 tick 的自动购买已执行：一口气买了 ${count(n)} 级` : '当前 mtc 买不起任何一项');
+      say(n > 0 ? `已购买 ${count(n)} 级` : '奶茶币不够买任何一项');
       break;
     }
     case 'pause': {
@@ -667,6 +701,25 @@ function act(action, payload) {
     case 'resetOpen':
       modal = { title: '抹除全部进度', text: '这会清空本地存档并从头开始，无法恢复。确定？', textarea: null, actions: ['reset', 'close'] };
       break;
+    case 'debugJumpOpen': {
+      const stage = Number(payload);
+      const info = engine.debugJumpList().find((d) => d.stage === stage);
+      modal = {
+        title: `调试：进入「${TIER_NAMES[stage - 1]}」初始存档`,
+        text: `层号 ${stage - 1}（${TIER_NAMES[stage - 1]}${stage === 9 ? ' · 终局' : ''}）首次抵达时的检查点：`
+          + `第 ${info ? info.run : '?'} 轮 · 记忆点数 ${info ? money(info.mp) : '?'} / 守护点数 ${info ? money(info.pp) : '?'}`
+          + `（docs/数值设计.md §12，由 tools/gen-debug-jumps.mjs 生成）。`
+          + `本层自动购买科技会置满级（22）。当前进度会被覆盖——需要保留请先「导出存档」。确定进入？`,
+        textarea: null, actions: ['debugJump', 'close'], payload: stage,
+      };
+      break;
+    }
+    case 'debugJump': {
+      const stage = modal && modal.payload;
+      modal = null;
+      performDebugJump(stage);
+      break;
+    }
     case 'reset':
       for (const key of [SAVE_KEY, ...LEGACY_KEYS]) localStorage.removeItem(key);
       saveIssue = '';
@@ -694,7 +747,6 @@ const app = new Vue({
     return { vm: buildVM(), story: null, nameDraft: '' };
   },
   computed: {
-    playTime() { return formatTime(engine.s.stats.playTime || 0); },
     version() { return STATE_VERSION; },
     storyLine() {
       if (!this.story) return '';
@@ -725,6 +777,22 @@ const app = new Vue({
     },
     act,
     go(id) { act('tab', id); },
+    syncTree() {
+      const show = !!(this.vm.body && this.vm.body.treeHost);
+      if (!show) {
+        // 离开科技树页：立刻销毁画布，别让它被 Vue 复用进别的页面
+        if (treeView) { treeView.detach(); treeView = null; lastTreeSync = 0; }
+        return;
+      }
+      const host = this.$refs && this.$refs.treeHost;
+      if (!host) return;
+      const now = performance.now();
+      if (now - lastTreeSync < 250) return;
+      lastTreeSync = now;
+      if (!treeView) treeView = new TreeView(host, { getEngine: () => engine, onBuy: (id) => act('treeBuy', id) });
+      else treeView.attach(host);
+      treeView.sync(engine);
+    },
     nextStory() {
       if (!this.story) return;
       if (app._ignoreStoryClick) { app._ignoreStoryClick = false; return; }
@@ -734,10 +802,11 @@ const app = new Vue({
       this.render();
     },
   },
-  mounted() { this.render(); },
+  mounted() { this.render(); this.syncTree(); },
+  updated() { this.syncTree(); },
   template: `
     <div id="container" class="container c-old-ui l-old-ui" :class="{ 'is-paused': vm.hud.paused }">
-      <!-- ── 顶部 HUD：净化力 / 深渊 / mtc ── -->
+      <!-- ── 顶部 HUD：净化力 / 深渊 / 奶茶币 ── -->
       <div class="l-game-header c-game-header">
         <div class="c-header-res">
           <span class="c-header-res__label">净化力</span>
@@ -748,7 +817,7 @@ const app = new Vue({
           <span class="c-header-res__value">{{ vm.hud.pressure }}</span>
         </div>
         <div class="c-header-res c-header-res--pp">
-          <span class="c-header-res__label">mtc</span>
+          <span class="c-header-res__label">奶茶币</span>
           <span class="c-header-res__value">{{ vm.hud.mtc }}</span>
         </div>
         <div class="c-header-tier">
@@ -766,27 +835,20 @@ const app = new Vue({
       <!-- ── 一根条：绿=净化力、红=深渊 ── -->
       <div class="l-abyss-bar">
         <div class="c-bar-row" :class="{ 'is-doomed': vm.hud.danger }">
-          <span class="c-bar-row__label">进度</span>
           <div class="c-abyss-bar c-dual-bar">
             <div class="c-dual-bar__power" :style="{ width: vm.hud.powerPct + '%' }"></div>
             <div class="c-dual-bar__pressure" :style="{ width: vm.hud.pressurePct + '%' }"></div>
             <div class="c-dual-bar__text">
-              <span class="c-dual-bar__t-power">净化力 {{ vm.hud.powerPctText }}</span>
+              <span class="c-dual-bar__t-power">净化 {{ vm.hud.powerPctText }}</span>
               <span class="c-dual-bar__t-pressure">深渊 {{ vm.hud.pressurePctText }}</span>
             </div>
           </div>
         </div>
         <div class="c-abyss-info">
-          <span>本程 {{ vm.hud.runTime }}</span>
+          <span>目标 {{ vm.hud.target }}</span>
           <span>本层 {{ vm.hud.stageTime }}</span>
           <span>第 {{ vm.hud.runIndex }} 轮</span>
-          <span>覆灭 {{ vm.hud.collapses }}</span>
-          <span>守护 {{ vm.hud.guards }}</span>
-          <span>目标 {{ vm.hud.target }}</span>
-          <span v-if="vm.hud.hits">削减 {{ vm.hud.hits }} · 强化 {{ vm.hud.burstHits }}</span>
-          <span v-if="vm.mech.showEnergy">释放 {{ vm.hud.releases }}</span>
-          <span>深渊÷净化力 {{ vm.hud.pressureRatioText }}</span>
-          <span>MP {{ vm.hud.wallets.mp }} · PP {{ vm.hud.wallets.pp }}</span>
+          <span :class="{ 'c-paused-tag': vm.hud.danger }">{{ vm.hud.pressureRatioText }}</span>
           <span v-if="vm.hud.paused" class="c-paused-tag">已暂停</span>
         </div>
         <div v-if="vm.saveIssue" class="c-save-issue">{{ vm.saveIssue }}</div>
@@ -794,20 +856,18 @@ const app = new Vue({
 
       <!-- ── 机制面板（六层起）── -->
       <div class="c-mech-row" v-if="vm.mech.showEnergy">
-        <span class="c-tag c-tag--mech">机制 · {{ vm.hud.mechanic }}</span>
-        <span>蓄能 E <b>{{ vm.mech.energy }}</b></span>
-        <span>余能 Q <b>{{ vm.mech.residual }}</b></span>
-        <span>上次释放 <b>{{ vm.mech.lastRelease }}</b></span>
+        <span class="c-tag c-tag--mech">{{ vm.hud.mechanic }}</span>
+        <span>蓄能 <b>{{ vm.mech.energy }}</b></span>
+        <span>余能 <b>{{ vm.mech.residual }}</b></span>
         <span>释放次数 <b>{{ vm.mech.releases }}</b></span>
         <template v-if="vm.mech.showBuffer">
-          <span>缓冲 B <b>{{ vm.mech.buffer }}</b></span>
-          <span>应急 A <b>{{ vm.mech.emergency }}</b></span>
-          <span>累计消耗 <b>{{ vm.mech.bufferSpent }}</b></span>
-          <span>救活 tick <b>{{ vm.mech.savedTicks }}</b></span>
+          <span>缓冲 <b>{{ vm.mech.buffer }}</b></span>
+          <span>应急 <b>{{ vm.mech.emergency }}</b></span>
+          <span>救场次数 <b>{{ vm.mech.savedTicks }}</b></span>
         </template>
         <template v-if="vm.mech.showErosion">
-          <span>侵蚀 C <b>{{ vm.mech.erosion }}</b></span>
-          <span>疲劳 W <b>{{ vm.mech.fatigue }}</b></span>
+          <span>侵蚀 <b>{{ vm.mech.erosion }}</b></span>
+          <span>疲劳 <b>{{ vm.mech.fatigue }}</b></span>
         </template>
       </div>
 
@@ -824,7 +884,7 @@ const app = new Vue({
         <button v-for="st in subTabs" :key="st.id"
           class="o-tab-btn o-tab-btn--secondary" :class="{ 'o-tab-btn--active': vm.sub === st.id }"
           @click="act('sub', st.id)">{{ st.name }}</button>
-        <span class="c-hint">手动买单项；「购买本 tick 全部」= 立刻执行一次自动购买循环</span>
+        <span class="c-hint">升级页手动买单项；科技页升级自动购买</span>
       </div>
 
       <div class="l-old-ui__page l-tab-page">
@@ -835,23 +895,25 @@ const app = new Vue({
             <span class="c-hint">{{ vm.body.charInfo.stageName }}（第 {{ vm.body.charInfo.stage }} 层）· {{ vm.body.charInfo.mechanic }}</span>
           </div>
           <div class="c-char-stat">
-            <span class="c-char-stat__label">产量（工作/秒）</span>
-            <span class="c-char-stat__value">{{ vm.body.charInfo.production }}</span>
-            <span class="c-char-stat__label">一阶</span>
-            <span class="c-char-stat__value">{{ vm.body.charInfo.first }}</span>
-            <span class="c-char-stat__label">二阶</span>
-            <span class="c-char-stat__value">{{ vm.body.charInfo.second }}</span>
-            <span class="c-char-stat__label">互借 share</span>
-            <span class="c-char-stat__value">{{ vm.body.charInfo.share }}</span>
+            <span class="c-char-stat__label">产量</span>
+            <span class="c-char-stat__value">{{ vm.body.charInfo.production }}/秒</span>
+            <template v-if="vm.body.charInfo.showAttack">
+              <span class="c-char-stat__label">攻击力</span>
+              <span class="c-char-stat__value">{{ vm.body.charInfo.hit }}</span>
+              <span class="c-char-stat__label">攻击频率</span>
+              <span class="c-char-stat__value">{{ vm.body.charInfo.frequency }}/秒</span>
+            </template>
+            <span class="c-char-stat__label">奶茶币收入</span>
+            <span class="c-char-stat__value">+{{ vm.body.charInfo.income }}/秒</span>
           </div>
-          <div class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
+          <div v-if="vm.body.charInfo.blurb" class="c-hint" style="text-align:left;max-width:110rem">{{ vm.body.charInfo.blurb }}</div>
 
           <!-- 升级：左右两栏 -->
           <template v-if="vm.sub === 'upgrades'">
             <div class="l-section-title l-section-title--buy">
               <span>升级</span>
-              <span class="c-hint">手动买单项；「购买本 tick 全部」= 把本 tick 的自动购买立刻执行一次</span>
-              <button class="o-primary-btn c-buy-max" @click="act('buyMax')">购买本 tick 全部</button>
+              <span class="c-hint">手动购买单项；「一键买满」按最便宜优先购买</span>
+              <button class="o-primary-btn c-buy-max" @click="act('buyMax')">一键买满</button>
             </div>
             <div v-if="!vm.body.items.live" class="c-dim-note c-page-note">{{ vm.body.items.note }}</div>
             <div v-else class="l-upgrade-cols">
@@ -862,27 +924,20 @@ const app = new Vue({
                 </div>
                 <div v-for="c in col.cards" :key="c.id" class="c-upgrade-card">
                   <div class="c-upgrade-card__head">
-                    <span class="c-upgrade-card__name">{{ c.name }}<span class="c-tag">{{ c.shortId }}</span></span>
+                    <span class="c-upgrade-card__name">{{ c.name }}</span>
                     <span class="c-upgrade-card__level">Lv {{ c.level }}</span>
-                  </div>
-                  <div class="c-upgrade-card__tags">
-                    <span class="c-tag">{{ c.group }}</span>
-                    <span v-if="c.old" class="c-tag c-tag--old">本层重购</span>
                   </div>
                   <div class="c-upgrade-card__effect">{{ c.effect }}</div>
                   <button class="c-buy-btn" :class="c.affordable ? 'is-affordable' : 'is-poor'"
                     @click="act('buyItem', c.index)">
-                    <span class="c-buy-btn__label">升级</span>
-                    <span class="c-buy-btn__price">{{ c.price }} mtc</span>
+                    <span class="c-buy-btn__label">{{ c.effectNext ? '升级 → ' + c.effectNext : '升级' }}</span>
+                    <span class="c-buy-btn__price">{{ c.price }} 奶茶币</span>
                   </button>
                 </div>
                 <div v-if="col.next" class="c-upgrade-card c-upgrade-card--locked">
                   <div class="c-upgrade-card__head">
-                    <span class="c-upgrade-card__name">{{ col.next.name }}<span class="c-tag">{{ col.next.shortId }}</span></span>
-                    <span class="c-tag c-tag--lock">即将解锁</span>
-                  </div>
-                  <div class="c-upgrade-card__tags">
-                    <span class="c-tag">{{ col.next.group }}</span>
+                    <span class="c-upgrade-card__name">{{ col.next.name }}</span>
+                    <span class="c-tag c-tag--lock">待解锁</span>
                   </div>
                   <div class="c-upgrade-card__effect">{{ col.next.mechanism }}</div>
                   <div class="c-upgrade-card__lock">{{ col.next.unlockText }}</div>
@@ -894,10 +949,10 @@ const app = new Vue({
             </div>
           </template>
 
-          <!-- 科技：自动购买 + 该角色专属永久升级（MP） -->
+          <!-- 科技：自动购买 + 该角色专属永久升级（记忆点数） -->
           <template v-else-if="vm.sub === 'techs'">
             <div class="l-section-title">科技
-              <span class="c-hint">两项：自动购买（MP 升级）· {{ vm.body.charInfo.name }} 的专属永久升级（覆灭结算时自动买）</span>
+              <span class="c-hint">自动购买（0 级不自动，用记忆点数升级）· {{ vm.body.charInfo.name }} 的专属永久升级（可手动买；自动购买需科技树 Lv1）</span>
             </div>
             <div class="l-upgrade-grid l-tech-grid">
               <div v-for="t in vm.body.techs" :key="t.id" class="c-upgrade-btn c-upgrade-btn--tech">
@@ -912,87 +967,71 @@ const app = new Vue({
                   :class="t.affordable ? 'is-affordable' : 'is-poor'"
                   @click="act('buyAutoTech', vm.tab)">
                   <span class="c-buy-btn__label">升级</span>
-                  <span class="c-buy-btn__price">{{ t.nextCost }} MP</span>
+                  <span class="c-buy-btn__price">{{ t.nextCost }} 记忆点数</span>
                 </button>
                 <div v-if="t.auto && t.maxed" class="c-dim-note">已满级</div>
+                <button v-if="!t.auto" class="c-buy-btn"
+                  :class="t.affordable ? 'is-affordable' : 'is-poor'"
+                  @click="act('buyFailureTech', t.stage)">
+                  <span class="c-buy-btn__label">手动升级</span>
+                  <span class="c-buy-btn__price">{{ t.nextCost }} 记忆点数</span>
+                </button>
               </div>
             </div>
             <div class="c-wallet-row">
-              <span class="c-wallet">记忆点数 MP（失败钱包）<b>{{ vm.hud.wallets.mp }}</b></span>
-              <span class="c-wallet c-wallet--pp">守护点数 PP（成功钱包）<b>{{ vm.hud.wallets.pp }}</b></span>
+              <span class="c-wallet">记忆点数（覆灭结算获得）<b>{{ vm.hud.wallets.mp }}</b></span>
+              <span class="c-wallet c-wallet--pp">守护点数（守护结算获得）<b>{{ vm.hud.wallets.pp }}</b></span>
             </div>
           </template>
 
-          <!-- 科技树（只有 249 有这一页）：根 = 自动购买，四叶 = 四个成功科技 -->
+          <!-- 科技树（只有 249 有这一页）：中心 = 自动化中枢，主干 = 四项永久科技 -->
           <template v-else>
             <div class="l-section-title">
               科技树
-              <span class="c-hint">根：自动购买科技（{{ vm.autoMaxLevel }} 级，MP 购买）· 四叶：成功科技（守护结算自动购买，全局共用）</span>
+              <span class="c-hint">
+                中心是自动化中枢；四条主干是全局永久科技（产量 / 攻击 / 守护点数 / 记忆点数）
+              </span>
+              <button class="o-primary-btn c-board-refresh" @click="act('treeFit')">适配视图</button>
             </div>
-            <div class="c-tech-tree">
-              <svg class="c-tech-tree__edges" viewBox="0 0 640 420" preserveAspectRatio="none">
-                <line v-for="l in vm.body.tree.leaves" :key="'e' + l.id"
-                  :x1="vm.body.tree.cx" :y1="vm.body.tree.cy" :x2="l.x" :y2="l.y" />
-              </svg>
-              <div class="c-tree-node c-tree-node--root"
-                :style="{ left: vm.body.tree.cx + 'px', top: vm.body.tree.cy + 'px' }">
-                <div class="c-tree-node__title">{{ vm.body.tree.root.name }}</div>
-                <div class="c-tree-node__level">Lv {{ vm.body.tree.root.level }} / {{ vm.body.tree.root.maxLevel }}</div>
-                <div class="c-tree-node__desc">{{ vm.body.tree.root.effect }}</div>
-                <button v-if="!vm.body.tree.root.maxed" class="c-buy-btn"
-                  :class="vm.body.tree.root.affordable ? 'is-affordable' : 'is-poor'"
-                  @click="act('buyAutoTech', vm.tab)">
-                  <span class="c-buy-btn__label">升级</span>
-                  <span class="c-buy-btn__price">{{ vm.body.tree.root.nextCost }} MP</span>
-                </button>
-                <div v-else class="c-dim-note">已满级</div>
-              </div>
-              <div v-for="l in vm.body.tree.leaves" :key="'n' + l.id"
-                class="c-tree-node c-tree-node--leaf"
-                :style="{ left: l.x + 'px', top: l.y + 'px' }">
-                <div class="c-tree-node__title">{{ l.name }}</div>
-                <div class="c-tree-node__level">{{ l.stat }} · Lv {{ l.level }}</div>
-                <div class="c-tree-node__desc">{{ l.desc }}</div>
-                <div class="c-tree-node__cost">下一级 {{ l.nextCost }} PP</div>
-              </div>
-            </div>
+            <div ref="treeHost" key="tech-tree-host" class="c-tree-host"></div>
             <div class="c-wallet-row">
-              <span class="c-wallet">记忆点数 MP（失败钱包）<b>{{ vm.hud.wallets.mp }}</b></span>
-              <span class="c-wallet c-wallet--pp">守护点数 PP（成功钱包）<b>{{ vm.body.tree.wallet }}</b></span>
+              <span class="c-wallet">记忆点数（覆灭结算获得）<b>{{ vm.hud.wallets.mp }}</b></span>
+              <span class="c-wallet c-wallet--pp">守护点数（守护结算获得）<b>{{ vm.hud.wallets.pp }}</b></span>
+              <span class="c-dim-note">中枢 Lv {{ vm.body.treeCenter }} · 每 {{ vm.body.treeIntervalText }} 自动执行一次</span>
+            </div>
+            <div class="c-dim-note c-page-note">
+              点击节点购买；主干需先购买「自动化中枢」。叶子与角色节点为占位，无效果。
             </div>
           </template>
         </template>
 
-        <!-- ═══ 守护页 ═══ -->
+        <!-- ═══ 永久科技（守护页） ═══ -->
         <template v-else-if="vm.kind === 'guard'">
-          <div class="l-section-title">守护（四项全局成功科技）
-            <span class="c-hint">成功结算时用 PP 自动买，同价顺序：生产 → 削减 → 成功资源 → 失败资源</span>
+          <div class="l-section-title">永久科技
+            <span class="c-hint">守护结算给守护点数、覆灭结算给记忆点数；结算后按最便宜优先自动购买，永不重置</span>
           </div>
           <div class="c-wallet-row">
-            <span class="c-wallet">记忆点数 MP（失败钱包）<b>{{ vm.body.guard.wallets.mp }}</b></span>
-            <span class="c-wallet c-wallet--pp">守护点数 PP（成功钱包）<b>{{ vm.body.guard.wallets.pp }}</b></span>
+            <span class="c-wallet">记忆点数（覆灭结算获得）<b>{{ vm.body.guard.wallets.mp }}</b></span>
+            <span class="c-wallet c-wallet--pp">守护点数（守护结算获得）<b>{{ vm.body.guard.wallets.pp }}</b></span>
           </div>
           <table class="c-stats-table c-guard-table">
             <thead>
-              <tr><th>项</th><th>名称</th><th>倍率</th><th>等级</th><th>下一级价格（PP）</th><th>作用域</th></tr>
+              <tr><th>名称</th><th>效果</th><th>等级</th><th>下一级价格（守护点数）</th></tr>
             </thead>
             <tbody>
               <tr v-for="r in vm.body.guard.rows" :key="r.id">
-                <td>{{ r.id }}</td>
                 <td>{{ r.name }}</td>
-                <td>{{ r.stat }}</td>
+                <td class="c-dim-note">{{ r.desc }}</td>
                 <td>{{ r.level }}</td>
                 <td class="c-item-table__price">{{ r.nextCost }}</td>
-                <td class="c-dim-note">{{ r.desc }}</td>
               </tr>
             </tbody>
           </table>
-          <div class="l-section-title">八种失败永久（记忆点数，永不重置）</div>
+          <div class="l-section-title">覆灭永久（记忆点数购买，永不重置）</div>
           <table class="c-stats-table">
-            <thead><tr><th>#</th><th>名称</th><th>等级</th><th>效果</th></tr></thead>
+            <thead><tr><th>名称</th><th>等级</th><th>效果</th></tr></thead>
             <tbody>
               <tr v-for="(f, i) in vm.body.guard.failures" :key="f.id">
-                <td>n{{ i + 1 }}</td>
                 <td>{{ f.name }}</td>
                 <td>{{ f.level }}</td>
                 <td class="c-dim-note">{{ f.effect }}</td>
@@ -1030,15 +1069,28 @@ const app = new Vue({
 
         <!-- ═══ 统计 ═══ -->
         <template v-else-if="vm.kind === 'stats'">
-          <div class="l-section-title">本 tick 效果明细</div>
+          <div class="l-section-title">产量</div>
           <table class="c-stats-table c-effect-table">
-            <thead><tr><th>字段</th><th>值</th></tr></thead>
             <tbody>
-              <tr v-for="(e, i) in vm.body.effects" :key="'fx' + i"><td>{{ e[0] }}</td><td>{{ e[1] }}</td></tr>
+              <tr v-for="(e, i) in vm.body.production" :key="'pd' + i"><td>{{ e[0] }}</td><td>{{ e[1] }}</td></tr>
             </tbody>
           </table>
 
-          <div class="l-section-title">有效等级（totals，16 个分量）</div>
+          <div class="l-section-title">攻击</div>
+          <table class="c-stats-table c-effect-table">
+            <tbody>
+              <tr v-for="(e, i) in vm.body.attack" :key="'ak' + i"><td>{{ e[0] }}</td><td>{{ e[1] }}</td></tr>
+            </tbody>
+          </table>
+
+          <div class="l-section-title">资源</div>
+          <table class="c-stats-table c-effect-table">
+            <tbody>
+              <tr v-for="(e, i) in vm.body.resource" :key="'rs' + i"><td>{{ e[0] }}</td><td>{{ e[1] }}</td></tr>
+            </tbody>
+          </table>
+
+          <div class="l-section-title">有效等级（各机制的等效级数）</div>
           <div class="c-kv c-kv--grid">
             <div v-for="(t, i) in vm.body.totals" :key="'tt' + i">
               <span class="c-kv__k">{{ t[0] }}</span> <span class="c-kv__v">{{ t[1] }}</span>
@@ -1052,10 +1104,10 @@ const app = new Vue({
             </div>
           </div>
 
-          <div class="l-section-title">最近 20 条结算账目</div>
+          <div class="l-section-title">最近 20 次结算</div>
           <div v-if="!vm.body.ledger.length" class="c-dim-note c-page-note">还没有结算记录：守护或覆灭后才会写入账目。</div>
           <table v-else class="c-stats-table c-ledger-table">
-            <thead><tr><th>类型</th><th>层</th><th>获得</th><th>花费</th><th>片段时长</th></tr></thead>
+            <thead><tr><th>结算</th><th>层</th><th>获得点数</th><th>自动花费</th><th>用时</th></tr></thead>
             <tbody>
               <tr v-for="e in vm.body.ledger" :key="e.key" :class="'c-ledger--' + e.kind">
                 <td>{{ e.kindText }}</td>
@@ -1103,9 +1155,8 @@ const app = new Vue({
             <button class="o-primary-btn" @click="act('resetOpen')">重新开始</button>
           </div>
           <div class="c-dim-note c-page-note">
-            本地键名 <code>{{ vm.saveKey }}</code>，存档版本 <code>{{ vm.stateVersion }}</code>。
-            载入顺序：本地 → 服务端；任一份抛 VERSION_MISMATCH 就跳过它继续试下一份。
-            旧 v5/v1 档不会被接受（V8 不迁移旧档，需重新开始）。
+            每 10 秒自动保存到本地，每分钟同步到服务器；载入时优先本地、再试服务器。
+            旧版本存档不会被迁移，需要重新开始。
           </div>
           <div v-if="vm.saveIssue" class="c-save-issue c-page-note">{{ vm.saveIssue }}</div>
 
@@ -1113,23 +1164,35 @@ const app = new Vue({
           <div class="c-kv">
             <div><span class="c-kv__k">所在地</span> <span class="c-kv__v">{{ vm.hud.stageName }}（第 {{ vm.hud.stage }} 层{{ vm.hud.endgame ? ' · 终局' : '' }}）</span></div>
             <div><span class="c-kv__k">本程时间</span> <span class="c-kv__v">{{ vm.hud.runTime }}</span></div>
-            <div><span class="c-kv__k">累计游玩</span> <span class="c-kv__v">{{ playTime }}</span></div>
+            <div><span class="c-kv__k">累计游玩</span> <span class="c-kv__v">{{ vm.body.playTimeText }}</span></div>
             <div><span class="c-kv__k">自动保存</span> <span class="c-kv__v">每 10 秒</span></div>
             <div><span class="c-kv__k">版本</span> <span class="c-kv__v">{{ version }}</span></div>
           </div>
 
-          <div class="l-section-title">调试 <span class="c-hint">对外暴露 window.__dny（view / tick / save / metrics / scene），不提供改数值入口</span></div>
+          <div class="l-section-title">调试 <span class="c-hint">跳层入口 + 控制台 window.__dny（view / tick / save / metrics / scene），不能改数值</span></div>
+          <div class="l-options-row">
+            <button v-for="d in vm.body.debugJumps" :key="'dj' + d.stage" class="o-primary-btn c-debug-jump"
+              :class="{ 'c-debug-jump--current': d.current }" :title="d.title"
+              @click="act('debugJumpOpen', d.stage)">{{ d.label }}</button>
+          </div>
           <div class="c-dim-note c-page-note">
-            控制台可用 <code>__dny.tick(400)</code> 连跑 400 个 0.05 秒 tick（等价 20Hz），
-            <code>__dny.view()</code> 读完整视图模型，<code>__dny.scene(5, 600)</code> 跳到第五层跑 600 tick（截图/验收用）。
+            点「层号 · 层名」直接进入<b>首次抵达该层</b>时的存档：永久升级与记忆/守护点数按
+            <code>docs/数值设计.md</code> §12 八层检查点（<code>node tools/gen-debug-jumps.mjs</code> 从全流程模拟生成），
+            本层自动购买科技置满级 22（数值口径 = 每 0.05 秒买满）。跳层会覆盖当前进度，需要保留请先导出存档；
+            到达后当前层的初见剧情照常播放。
+          </div>
+          <div class="c-dim-note c-page-note">
+            控制台可用 <code>__dny.tick(400)</code> 快进 400 步（每步 0.05 秒），
+            <code>__dny.view()</code> 读完整游戏状态，<code>__dny.scene(5, 600)</code> 跳到第五层跑 600 步（截图/验收用），
+            <code>__dny.jumpTo(4)</code> 等价于点上面的「4 · 奶盖星球」。
           </div>
 
           <div class="l-section-title">玩法速记</div>
           <div class="c-dim-note c-page-note">
-            每 0.05 秒一个 tick：解锁扫描 → 最便宜优先购买 → 生产与充能 → 蓄能与缓冲 → 侵蚀与疲劳 →
-            压力增长 → 普通攻击 → 蓄能释放 → 判成功 → 判缓冲 → 判失败。
-            八层全部守护后进入终局（永不胜，只判失败）；失败结算回第一层，永久等级保留。
-            剧情播放与暂停时 tick 完全停止。
+            每 0.05 秒一步：解锁升级 → 自动购买最便宜项 → 产量增长并赚取奶茶币 → 深渊上升 →
+            攻击削减深渊 → 净化力达标即「守护」，进入下一层；深渊追上净化力即「覆灭」，回到第一层
+            （永久科技保留）。八层全部守护后进入终局：终局不判成功，被深渊追上即结束本轮。
+            剧情播放与暂停时游戏完全停止。
           </div>
         </template>
       </div>
@@ -1137,9 +1200,6 @@ const app = new Vue({
       <!-- ── 底部状态 ── -->
       <div class="l-status-bar">
         <span>{{ vm.message }}</span>
-        <span class="c-dim-note">
-          净化力 {{ vm.hud.power }} · 深渊 {{ vm.hud.pressure }} · mtc {{ vm.hud.mtc }} · 压迫 {{ vm.hud.pressureRatioText }}
-        </span>
       </div>
 
       <!-- ── 剧情播放器 ── -->
@@ -1158,6 +1218,7 @@ const app = new Vue({
           <div class="c-pending-row">第 {{ vm.pending.stage }} 层「{{ vm.pending.stageName }}」· 片段 {{ vm.pending.time }}</div>
           <div class="c-pending-row">获得 <b>{{ vm.pending.gained }}</b> {{ vm.pending.walletName }}，自动买到 <b>{{ vm.pending.levelsGained }}</b> 级（余额 {{ vm.pending.walletAfter }}）</div>
           <div class="c-pending-row c-dim-note" v-for="(l, i) in vm.pending.lines" :key="'pl' + i">{{ l }}</div>
+          <div class="c-pending-row c-dim-note" v-if="vm.pending.autoNote">{{ vm.pending.autoNote }}</div>
           <div class="c-pending-row c-dim-note">{{ vm.pending.next }}</div>
           <div class="l-options-row">
             <button class="o-primary-btn" data-action="resolve" @click="act('resolvePending')">{{ vm.pending.button }}</button>
@@ -1174,6 +1235,7 @@ const app = new Vue({
           <div class="l-options-row">
             <button v-if="vm.modal.actions.includes('import')" class="o-primary-btn" data-action="import" @click="act('import')">导入</button>
             <button v-if="vm.modal.actions.includes('reset')" class="o-primary-btn" data-action="reset" @click="act('reset')">确认抹除</button>
+            <button v-if="vm.modal.actions.includes('debugJump')" class="o-primary-btn" data-action="debugJump" @click="act('debugJump')">确认进入</button>
             <button class="o-primary-btn" data-action="close" @click="act('close')">关闭</button>
           </div>
         </div>
@@ -1267,6 +1329,11 @@ window.__dny = {
     engine.s.auto.collapse = !!on;
     engine.s.auto.guard = !!on;
     flushViewSync();
+  },
+  jumpTo: (stage) => {
+    const entry = performDebugJump(stage);
+    flushViewSync();
+    return entry ? engine.view() : null;
   },
   clearStory: () => {
     engine.s.storyQueue.length = 0;
