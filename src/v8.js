@@ -526,10 +526,10 @@ export class Segment {
   }
 
   /**
-   * 只把**某一个所属层**的 8 项买到买不起（「一键买满」/ 满级自动购买用）。
-   * 记账与逐级购买完全同源；不碰其他所属层的项。
+   * 只把**某一个所属层**的 8 项逐级买到买不起（尾部补齐 / 小预算用）。
+   * 记账与逐级购买完全同源；不碰其他所属层的项。limit 给个上限，避免手动功能卡死。
    */
-  buyOwnerLoop(owner) {
+  buyOwnerLoop(owner, limit = GUARDS.sequentialBuys) {
     let count = 0;
     const from = (owner - 1) * 8, to = owner * 8;
     for (;;) {
@@ -545,10 +545,59 @@ export class Segment {
       this.prices[best] = this.items[best].firstPrice * Math.exp(this.items[best].step * this.levels[best]);
       this.purchases++;
       count++;
-      if (count > GUARDS.sequentialBuys) throw new Error('Owner purchase runaway');
+      if (count >= limit) break;
     }
     return count;
   }
+
+  /**
+   * 「一键买满」：只买一个所属层的 8 项，但用与 §4.3 相同的阈值二分批量算，
+   * 否则高层的密度（k 到 8e7）会让等级直接冲到上亿，逐级循环根本跑不完。
+   * 批量之后再用逐级循环补尾部，保证「买到买不起」。
+   */
+  buyOwnerBulk(owner) {
+    const from = (owner - 1) * 8, to = Math.min(owner * 8, this.items.length);
+    let first = -1;
+    for (let i = from; i < to; i++) {
+      if (!this.unlocked[i]) continue;
+      if (first === -1 || this.prices[i] < this.prices[first]) first = i;
+    }
+    if (first === -1 || this.prices[first] > this.wallet) return 0;
+    const min = this.prices[first];
+    const countsAt = (threshold) => {
+      const out = [];
+      for (let i = from; i < to; i++) {
+        out.push(this.unlocked[i] && this.prices[i] <= threshold
+          ? Math.max(0, Math.floor(Math.log(threshold / this.prices[i]) / this.items[i].step) + 1) : 0);
+      }
+      return out;
+    };
+    const totalAt = (counts) => counts.reduce(
+      (sum, n, k) => sum + batchCost(this.prices[from + k], this.items[from + k].step, n), 0,
+    );
+    let low = min, high = min + this.wallet;
+    for (let k = 0; k < 64; k++) {
+      const mid = (low + high) / 2;
+      if (totalAt(countsAt(mid)) <= this.wallet) low = mid; else high = mid;
+    }
+    const counts = countsAt(low), spent = totalAt(counts);
+    this.wallet -= spent;
+    let count = 0;
+    for (let k = 0; k < counts.length; k++) {
+      const n = counts[k];
+      if (!n) continue;
+      const i = from + k;
+      this.levels[i] += n;
+      if (!Number.isSafeInteger(this.levels[i])) throw new RangeError('Upgrade level exceeds exact range');
+      this.totals[(this.items[i].owner - 1) * 2 + this.items[i].kind] += n / this.items[i].density;
+      this.prices[i] = this.items[i].firstPrice * Math.exp(this.items[i].step * this.levels[i]);
+      count += n;
+    }
+    const tail = this.buyOwnerLoop(owner, 10000);   // tail 的 purchases 已在循环里记过
+    this.purchases += count;
+    return count + tail;
+  }
+
   // 该所属层 8 项里最便宜的一级（自动购买科技 9–21 级用）
   buyCheapestForOwner(owner) {
     let best = -1;

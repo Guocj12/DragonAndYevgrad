@@ -321,6 +321,23 @@ const eight = campaign({});
     assert(s22.levels.slice(0, 56).every((v) => v === 0), ok('满级：不替其他所属层花钱'));
   }
 
+  // 一键买满：跟随界面上的角色（不是当前层）
+  {
+    const big = new Eng(init());
+    big.headless = true;
+    big.scene(8, 0, { demo: 16 });
+    big.seg.wallet = 1e12;
+    big.seg.unlocked.fill(true);
+    const before = big.seg.levels.slice();
+    const n = big.buyMaxOnce('249');
+    const after = big.seg.levels.slice();
+    const changed = [];
+    for (let i = 0; i < after.length; i++) if (after[i] !== before[i]) changed.push(i);
+    assert(n > 0 && changed.length > 0 && changed.every((i) => i < 8),
+      ok('一键买满跟随界面角色：第 8 层打开 249 页只动 0..7'));
+    const cheapest = Math.min(...big.seg.prices.slice(0, 8));
+    assert(cheapest > big.seg.wallet, ok('一键买满后 249 的 8 项确实买不起'));
+  }
   // 结算自动购买：默认关（实际游戏），科技树 Lv1 解锁后才自动买
   {
     const runUntilSettle = (e, limit = 80000) => {

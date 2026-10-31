@@ -103,7 +103,7 @@ for (const [stage, id] of CHARS) {
   await page.screenshot({ path: path.join(shotDir, `stage${stage}-${id}-techs.png`), fullPage: true });
 }
 
-// ── 一键买满：只动当前角色 8 项 ──
+// ── 一键买满：作用于「当前查看的角色」，不是当前层 ──
 {
   await page.evaluate(() => {
     const e = window.__dny.engine;
@@ -114,17 +114,29 @@ for (const [stage, id] of CHARS) {
     window.__dny.view();
   });
   await page.waitForTimeout(150);
-  await page.locator('.l-tab-bar .o-tab-btn', { hasText: 'XyT' }).first().click();
-  await page.waitForTimeout(120);
-  await clickSub('升级');
-  const before = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
-  await page.locator('.c-buy-max').click();
-  await page.waitForTimeout(200);
-  const after = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
-  const changed = [];
-  for (let i = 0; i < after.length; i++) if (after[i] !== before[i]) changed.push(i);
-  ok(changed.length > 0 && changed.every((i) => i >= 56 && i < 64),
-    `一键买满只改动本角色（第 8 层 56..63），实际改动 ${changed.length} 项`);
+
+  const buyOn = async (charName, sub) => {
+    await page.locator('.l-tab-bar .o-tab-btn', { hasText: charName }).first().click();
+    await page.waitForTimeout(120);
+    await clickSub('升级');
+    const before = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
+    await page.locator('.c-buy-max').click();
+    await page.waitForTimeout(250);
+    const after = await page.evaluate(() => window.__dny.engine.seg.levels.slice());
+    const changed = [];
+    for (let i = 0; i < after.length; i++) if (after[i] !== before[i]) changed.push(i);
+    return changed;
+  };
+
+  // 站在第 8 层，打开 249 页 → 只动 0..7
+  const c249 = await buyOn('249');
+  ok(c249.length > 0 && c249.every((i) => i >= 0 && i < 8),
+    `第 8 层打开 249 页，一键买满只动 249 的 8 项（改动 ${c249.length} 项：${c249.join(',')}）`);
+
+  // 打开 恒 页 → 只动 24..31
+  const cHeng = await buyOn('恒');
+  ok(cHeng.length > 0 && cHeng.every((i) => i >= 24 && i < 32),
+    `打开 恒 页，一键买满只动 恒 的 8 项（改动 ${cHeng.length} 项：${cHeng.join(',')}）`);
 }
 
 // ── 实际游戏口径（headless=false）：科技页给手动按钮，未解锁时提示去科技树 ──

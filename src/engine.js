@@ -374,7 +374,7 @@ export class Engine {
     // 满级：数值基准（headless）必须与文档 §14 的「全项买满」逐字一致；
     // 实际游戏里只买当前角色自己的 8 项，不去动其他角色/旧层的项。
     if (lv >= AUTO_MAX_LEVEL) {
-      return this.headless ? seg.defaultBuy() : seg.buyOwnerLoop(owner);
+      return this.headless ? seg.defaultBuy() : seg.buyOwnerBulk(owner);
     }
     const interval = autoTechInterval(lv);
     s.autoTimer[id] = (s.autoTimer[id] || 0) + dt;
@@ -512,9 +512,14 @@ export class Engine {
     return n > 0;
   }
 
-  /** 一键买满：只把当前层角色的 8 项买到买不起，不影响其他角色 */
-  buyMaxOnce() {
-    const n = this.seg.buyOwnerLoop(Math.min(this.s.stage, 8));
+  /**
+   * 一键买满：把**当前查看的角色**那 8 项买到买不起。
+   * charId 由界面传入（角色页签）；不传时才退回当前层角色。
+   * 例如站在第 8 层、打开 249 的升级页，一键买满买的是 249（所属层 1）的 8 项。
+   */
+  buyMaxOnce(charId) {
+    const owner = charId && CHAR_TO_LAYER[charId] ? CHAR_TO_LAYER[charId] : Math.min(this.s.stage, 8);
+    const n = this.seg.buyOwnerBulk(owner);
     if (n) this.seg.lastEffects = null;
     return n;
   }

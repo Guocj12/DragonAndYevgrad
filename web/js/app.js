@@ -1,4 +1,4 @@
-﻿// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
+// web/js/app.js — 龙与耶维城 前端（V8 引擎外壳；AD 壳：Vue 2 + AD 的 styles.css/old-ui.css 类名）
 //
 // 铁律：
 //   ① 本文件**不计算任何数值**。一切数字来自 src/engine.js 的视图模型；
@@ -645,8 +645,11 @@ function act(action, payload) {
     }
     case 'treeFit': if (treeView) treeView.fitTree(); break;
     case 'buyMax': {
-      const n = engine.buyMaxOnce();
-      say(n > 0 ? `已购买 ${count(n)} 级` : '奶茶币不够买任何一项');
+      const who = payload && CHARACTERS[payload] ? CHARACTERS[payload].name : '';
+      const n = engine.buyMaxOnce(payload);
+      say(n > 0
+        ? `一键买满：${who || '本层'} 买了 ${count(n)} 级（只动这 8 项）`
+        : `${who || '本层'} 的 8 项都买不起：mtc 不够`);
       break;
     }
     case 'pause': {
@@ -915,8 +918,8 @@ const app = new Vue({
           <template v-if="vm.sub === 'upgrades'">
             <div class="l-section-title l-section-title--buy">
               <span>升级</span>
-              <span class="c-hint">手动购买单项；「一键买满」= 只把本角色 8 项买到买不起（不碰其他角色）</span>
-              <button class="o-primary-btn c-buy-max" @click="act('buyMax')">一键买满</button>
+              <span class="c-hint">手动购买单项；「一键买满」= 把**当前这个角色**的 8 项买到买不起（不碰其他角色）</span>
+              <button class="o-primary-btn c-buy-max" @click="act('buyMax', vm.tab)">一键买满（{{ vm.body.charInfo.name }}）</button>
             </div>
             <div v-if="!vm.body.items.live" class="c-dim-note c-page-note">{{ vm.body.items.note }}</div>
             <div v-else class="l-upgrade-cols">
